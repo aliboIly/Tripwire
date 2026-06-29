@@ -13,18 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: server/package-lock.json
+          workspaces: server
       - name: Build server
         working-directory: server
-        run: |
-          npm ci
-          npm run build
+        run: cargo build --release
       - name: Run the security review
-        run: node server/dist/reviewCli.js sample-game/src > review.md
+        run: server/target/release/tripwire-server review sample-game/src > review.md
       - name: Comment on the pull request
         env:
           GH_TOKEN: ${{ github.token }}

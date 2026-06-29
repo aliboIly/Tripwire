@@ -15,6 +15,10 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: "20"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
       - name: Install Rokit
         run: |
           curl -fsSL https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh | bash
@@ -31,12 +35,10 @@ jobs:
 
       - name: Build server
         working-directory: server
-        run: |
-          npm ci
-          npm run build
+        run: cargo build --release
 
       - name: Package server
-        run: tar -czf "tripwire-server-${{ github.ref_name }}.tar.gz" -C server dist package.json package-lock.json
+        run: tar -czf "tripwire-server-${{ github.ref_name }}-linux-x86_64.tar.gz" -C server/target/release tripwire-server
 
       - name: Publish release
         env:
@@ -48,7 +50,7 @@ jobs:
           esac
           gh release create "${{ github.ref_name }}" \
             plugin/Tripwire.rbxmx \
-            "tripwire-server-${{ github.ref_name }}.tar.gz" \
+            "tripwire-server-${{ github.ref_name }}-linux-x86_64.tar.gz" \
             --title "${{ github.ref_name }}" \
             --generate-notes \
             $prerelease

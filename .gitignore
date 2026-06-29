@@ -21,3 +21,6 @@ plugin/include/
 
 # OS / editor cruft
 .DS_Store
+
+# Rust build output
+/server/target/

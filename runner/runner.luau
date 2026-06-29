@@ -1,8 +1,8 @@
 -- Tripwire in-play runner (Phase 3).
 --
--- This is the one intentionally hand-written Luau file in the project (see
--- Docs/ARCHITECTURE.md). The plugin injects it into the running game at playtest
--- start, because the plugin (edit DataModel) and the playtest (separate server and
+-- This is the one intentionally hand-written Luau file in the project. The plugin
+-- injects it into the running game at playtest start, because the plugin (edit
+-- DataModel) and the playtest (separate server and
 -- client DataModels) are memory-isolated and the plugin cannot reach the running
 -- game. The runner self-detects its peer (server or client).
 --

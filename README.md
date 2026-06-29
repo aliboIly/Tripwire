@@ -21,13 +21,13 @@ tools need no API key; the headless test, asset, and Open Cloud tools use an Ope
 
 ## Install
 
-Tripwire is a Node stdio MCP server. Build it once, then point your client at it.
+Tripwire is a Rust stdio MCP server. Build it once with [Rust](https://rustup.rs), then point your
+client at the binary.
 
 ```bash
 git clone https://github.com/aliboIly/Tripwire.git
 cd Tripwire/server
-npm install
-npm run build        # produces server/dist/index.js
+cargo build --release   # produces server/target/release/tripwire-server
 ```
 
 Replace `/ABS/PATH` below with the absolute path to your clone.
@@ -38,7 +38,7 @@ Replace `/ABS/PATH` below with the absolute path to your clone.
 One command:
 
 ```bash
-claude mcp add --transport stdio tripwire -- node /ABS/PATH/Tripwire/server/dist/index.js
+claude mcp add --transport stdio tripwire -- /ABS/PATH/Tripwire/server/target/release/tripwire-server
 ```
 
 Or add it to a project `.mcp.json` (or `~/.claude.json`):
@@ -48,8 +48,8 @@ Or add it to a project `.mcp.json` (or `~/.claude.json`):
   "mcpServers": {
     "tripwire": {
       "type": "stdio",
-      "command": "node",
-      "args": ["/ABS/PATH/Tripwire/server/dist/index.js"]
+      "command": "/ABS/PATH/Tripwire/server/target/release/tripwire-server",
+      "args": []
     }
   }
 }
@@ -64,11 +64,11 @@ Add to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.tripwire]
-command = "node"
-args = ["/ABS/PATH/Tripwire/server/dist/index.js"]
+command = "/ABS/PATH/Tripwire/server/target/release/tripwire-server"
+args = []
 ```
 
-Or: `codex mcp add tripwire -- node /ABS/PATH/Tripwire/server/dist/index.js`
+Or: `codex mcp add tripwire -- /ABS/PATH/Tripwire/server/target/release/tripwire-server`
 
 </details>
 
@@ -81,25 +81,25 @@ Add to `~/.gemini/settings.json` (or a project `.gemini/settings.json`):
 {
   "mcpServers": {
     "tripwire": {
-      "command": "node",
-      "args": ["/ABS/PATH/Tripwire/server/dist/index.js"]
+      "command": "/ABS/PATH/Tripwire/server/target/release/tripwire-server",
+      "args": []
     }
   }
 }
 ```
 
-Or: `gemini mcp add tripwire node /ABS/PATH/Tripwire/server/dist/index.js`
+Or: `gemini mcp add tripwire /ABS/PATH/Tripwire/server/target/release/tripwire-server`
 
 </details>
 
 <details>
 <summary><b>Other MCP clients</b></summary>
 
-Any client that speaks MCP over stdio can run it. Launch:
+Any client that speaks MCP over stdio can run it. Launch the binary directly:
 
 ```
-command: node
-args:    ["/ABS/PATH/Tripwire/server/dist/index.js"]
+command: /ABS/PATH/Tripwire/server/target/release/tripwire-server
+args:    []
 ```
 
 </details>
