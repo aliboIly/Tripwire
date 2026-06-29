@@ -1,10 +1,16 @@
 import http from "node:http";
 import { randomUUID } from "node:crypto";
 
-// Wire-contract version. The plugin sends its own version on /hello; a mismatch
-// is rejected loudly so a stale plugin fails clearly instead of dropping fields.
-// Bump this on both sides whenever a command or result shape changes.
+// Wire-contract version. The plugin and runners send their version on /hello; a
+// mismatch is rejected loudly so a stale peer fails clearly instead of dropping
+// fields. Bump this on every peer whenever a command or result shape changes.
 export const PROTOCOL_VERSION = 1;
+
+// Who a command is for. The edit-side plugin polls as "plugin"; the injected
+// in-play runners poll as "server" or "client". Routing by role is what stops the
+// plugin and the runners from dequeuing each other's commands.
+export type Role = "plugin" | "server" | "client";
+const ROLES: readonly Role[] = ["plugin", "server", "client"];
 
 export interface Command {
   id: string;
@@ -24,26 +30,32 @@ interface Pending {
   timer: ReturnType<typeof setTimeout>;
 }
 
-// The bridge is the local HTTP server the Studio plugin long-polls.
-// MCP tool handlers call send(); the plugin pulls commands from /poll,
-// executes them in Studio, and posts results to /result.
-//
-// PHASE 3 TODO: route commands by target (plugin vs injected in-play runner).
-// Right now both pollers would compete for the same queue. The runner is only
-// injected during play, so this is fine for Phase 0 but must be fixed before
-// in-play tooling lands.
+type Waiter = (c: Command | null) => void;
+
+const POLL_PARK_MS = 20000;
+const DEFAULT_TIMEOUT_MS = 30000;
+
+// The bridge is the local HTTP server the Studio plugin and the injected in-play
+// runners long-poll. MCP tool handlers call send() with a target role; each peer
+// pulls only its own role's commands from /poll and posts results to /result.
 export class Bridge {
-  private queue: Command[] = [];
+  private queues: Map<Role, Command[]> = new Map(ROLES.map((r) => [r, []]));
+  private waiters: Map<Role, Waiter[]> = new Map(ROLES.map((r) => [r, []]));
   private pending = new Map<string, Pending>();
-  private waiters: Array<(c: Command | null) => void> = [];
   connected = false;
   placeName = "(unknown)";
   lastError?: string;
+  peers = new Set<Role>();
   private bridgeReady = false;
 
-  send(type: string, payload: unknown, timeoutMs = 30000): Promise<BridgeResult> {
+  send(
+    type: string,
+    payload: unknown,
+    target: Role = "plugin",
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+  ): Promise<BridgeResult> {
     // Fail fast if the bridge never bound (for example another Tripwire server
-    // already holds the port) rather than making every Studio call wait out the timeout.
+    // already holds the port) rather than making every call wait out the timeout.
     if (!this.bridgeReady) {
       return Promise.reject(new Error(this.lastError ?? "Tripwire bridge is not running."));
     }
@@ -52,60 +64,35 @@ export class Bridge {
     return new Promise<BridgeResult>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        // Drop it from the queue too, so a command the caller gave up on cannot be
-        // delivered and run later. Harmless for reads, but it matters once writes exist.
-        this.queue = this.queue.filter((c) => c.id !== id);
+        // Drop it from the target's queue too, so a command the caller gave up on
+        // cannot be delivered and run later.
+        this.queues.set(target, this.queueFor(target).filter((c) => c.id !== id));
         reject(
           new Error(
-            `Tripwire bridge: command '${type}' timed out after ${timeoutMs}ms. ` +
-              `Is the Studio plugin connected and "Allow HTTP Requests" enabled?`,
+            `Tripwire bridge: command '${type}' to ${target} timed out after ${timeoutMs}ms. ` +
+              `Is the ${target} peer connected and "Allow HTTP Requests" enabled?`,
           ),
         );
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
-      const waiter = this.waiters.shift();
+      const waiter = this.waitersFor(target).shift();
       if (waiter) waiter(cmd);
-      else this.queue.push(cmd);
+      else this.queueFor(target).push(cmd);
     });
   }
 
   start(port: number): http.Server {
     const srv = http.createServer((req, res) => {
       const url = req.url ?? "/";
-      if (req.method === "POST" && url === "/hello") {
-        return this.readBody(req, (b) => {
-          const info = safeJson(b) as { placeName?: string; protocolVersion?: number } | null;
-          if (info?.protocolVersion !== PROTOCOL_VERSION) {
-            this.connected = false;
-            this.lastError =
-              `protocol mismatch: plugin sent ${info?.protocolVersion ?? "none"}, ` +
-              `server speaks ${PROTOCOL_VERSION}. Rebuild and reinstall the plugin.`;
-            return json(res, 409, { ok: false, error: this.lastError });
-          }
-          this.connected = true;
-          this.lastError = undefined;
-          if (info.placeName) this.placeName = info.placeName;
-          json(res, 200, { ok: true });
-        });
-      }
-      if (req.method === "GET" && url === "/poll") return this.handlePoll(res);
-      if (req.method === "POST" && url === "/result") {
-        return this.readBody(req, (b) => {
-          const r = safeJson(b) as ({ id: string } & BridgeResult) | null;
-          if (r && this.pending.has(r.id)) {
-            const p = this.pending.get(r.id)!;
-            clearTimeout(p.timer);
-            this.pending.delete(r.id);
-            p.resolve({ ok: r.ok, data: r.data, error: r.error });
-          }
-          json(res, 200, { ok: true });
-        });
-      }
+      const path = url.split("?")[0];
+      if (req.method === "POST" && path === "/hello") return this.handleHello(req, res);
+      if (req.method === "GET" && path === "/poll") return this.handlePoll(res, roleFromUrl(url));
+      if (req.method === "POST" && path === "/result") return this.handleResult(req, res);
       json(res, 404, { ok: false, error: "not found" });
     });
     // Handle a bind failure instead of letting the unhandled error event crash the
-    // whole MCP server. The most common cause is another Tripwire server already on
-    // this port; the MCP still serves every tool that does not need Studio.
+    // whole MCP server. The most common cause is another Tripwire server on this
+    // port; the MCP still serves every tool that does not need Studio.
     srv.on("error", (err: NodeJS.ErrnoException) => {
       this.bridgeReady = false;
       this.lastError =
@@ -122,24 +109,70 @@ export class Bridge {
     return srv;
   }
 
-  private handlePoll(res: http.ServerResponse): void {
-    const next = this.queue.shift();
+  private handleHello(req: http.IncomingMessage, res: http.ServerResponse): void {
+    this.readBody(req, (b) => {
+      const info = safeJson(b) as { placeName?: string; protocolVersion?: number; role?: Role } | null;
+      if (info?.protocolVersion !== PROTOCOL_VERSION) {
+        this.connected = false;
+        this.lastError =
+          `protocol mismatch: peer sent ${info?.protocolVersion ?? "none"}, ` +
+          `server speaks ${PROTOCOL_VERSION}. Rebuild and reinstall the plugin.`;
+        return json(res, 409, { ok: false, error: this.lastError });
+      }
+      const role: Role = info.role === "server" || info.role === "client" ? info.role : "plugin";
+      this.peers.add(role);
+      // "connected" tracks the edit-side plugin specifically, which is what
+      // studio_status reports; the runners are transient per playtest.
+      if (role === "plugin") {
+        this.connected = true;
+        this.lastError = undefined;
+        if (info.placeName) this.placeName = info.placeName;
+      }
+      json(res, 200, { ok: true });
+    });
+  }
+
+  private handlePoll(res: http.ServerResponse, role: Role): void {
+    const next = this.queueFor(role).shift();
     if (next) {
       json(res, 200, next);
       return;
     }
-    // Long-poll: park the request for up to 20s waiting for a command.
-    const waiter = (c: Command | null): void => {
+    // Long-poll: park this role's request for a window, answering when a command
+    // for that role arrives, or empty on timeout.
+    const waiter: Waiter = (c) => {
       clearTimeout(timer);
       if (c) json(res, 200, c);
       else res.writeHead(204).end();
     };
-    this.waiters.push(waiter);
+    this.waitersFor(role).push(waiter);
     const timer = setTimeout(() => {
-      const i = this.waiters.indexOf(waiter);
-      if (i >= 0) this.waiters.splice(i, 1);
+      const arr = this.waitersFor(role);
+      const i = arr.indexOf(waiter);
+      if (i >= 0) arr.splice(i, 1);
       res.writeHead(204).end();
-    }, 20000);
+    }, POLL_PARK_MS);
+  }
+
+  private handleResult(req: http.IncomingMessage, res: http.ServerResponse): void {
+    this.readBody(req, (b) => {
+      const r = safeJson(b) as ({ id: string } & BridgeResult) | null;
+      if (r && this.pending.has(r.id)) {
+        const p = this.pending.get(r.id)!;
+        clearTimeout(p.timer);
+        this.pending.delete(r.id);
+        p.resolve({ ok: r.ok, data: r.data, error: r.error });
+      }
+      json(res, 200, { ok: true });
+    });
+  }
+
+  private queueFor(role: Role): Command[] {
+    return this.queues.get(role)!;
+  }
+
+  private waitersFor(role: Role): Waiter[] {
+    return this.waiters.get(role)!;
   }
 
   private readBody(req: http.IncomingMessage, cb: (body: string) => void): void {
@@ -147,6 +180,13 @@ export class Bridge {
     req.on("data", (c) => (data += c));
     req.on("end", () => cb(data));
   }
+}
+
+function roleFromUrl(url: string): Role {
+  const query = url.split("?")[1];
+  if (!query) return "plugin";
+  const role = new URLSearchParams(query).get("role");
+  return role === "server" || role === "client" ? role : "plugin";
 }
 
 function json(res: http.ServerResponse, code: number, body: unknown): void {
