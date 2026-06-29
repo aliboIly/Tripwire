@@ -110,6 +110,58 @@ server.registerTool(
   async ({ path }) => asText(await bridge.send("get_instance_properties", { path })),
 );
 
+server.registerTool(
+  "search_objects",
+  {
+    description:
+      "Find instances whose name contains a query (case-insensitive) under a path (default the whole game), optionally filtered by className. Read-only.",
+    inputSchema: {
+      query: z.string(),
+      path: z.string().optional(),
+      className: z.string().optional(),
+      limit: z.number().int().min(1).optional(),
+    },
+  },
+  async (args) => asText(await bridge.send("search_objects", args)),
+);
+
+server.registerTool(
+  "get_script_source",
+  {
+    description: "Read the source of a Script, LocalScript, or ModuleScript at the given path. Read-only.",
+    inputSchema: { path: z.string() },
+  },
+  async ({ path }) => asText(await bridge.send("get_script_source", { path })),
+);
+
+server.registerTool(
+  "grep_scripts",
+  {
+    description:
+      "Search script sources for a substring (case-insensitive) under a path (default the whole game). Returns path, line number, and line text for each match. Read-only.",
+    inputSchema: { pattern: z.string(), path: z.string().optional(), limit: z.number().int().min(1).optional() },
+  },
+  async (args) => asText(await bridge.send("grep_scripts", args)),
+);
+
+server.registerTool(
+  "get_output_log",
+  {
+    description: "Return recent Studio output log entries (message, type, timestamp). Read-only.",
+    inputSchema: { limit: z.number().int().min(1).optional() },
+  },
+  async ({ limit }) => asText(await bridge.send("get_output_log", { limit })),
+);
+
+server.registerTool(
+  "get_selection",
+  {
+    description: "List the instances currently selected in Studio (name, className, full path). Read-only.",
+    inputSchema: {},
+  },
+  async () => asText(await bridge.send("get_selection", {})),
+);
+
 // The security tools run a local static analysis over a Rojo source tree. They
 // need no Studio session or Open Cloud key. The default target assumes the server
 // runs from the repo root.
