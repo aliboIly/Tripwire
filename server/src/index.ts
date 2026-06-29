@@ -433,7 +433,9 @@ server.registerTool(
       action: z.enum(["click", "move"]).optional(),
     },
   },
-  async (args) => asText(await bridge.send("mouse_input", args, "client", 10000)),
+  // Routed to the server peer, which relays it to the client (only the server can
+  // reach the bridge); the timeout covers the relay's client-ready and reply waits.
+  async (args) => asText(await bridge.send("mouse_input", args, "server", 40000)),
 );
 
 server.registerTool(
@@ -447,7 +449,7 @@ server.registerTool(
       action: z.enum(["tap", "press", "release"]).optional(),
     },
   },
-  async (args) => asText(await bridge.send("keyboard_input", args, "client", 10000)),
+  async (args) => asText(await bridge.send("keyboard_input", args, "server", 40000)),
 );
 
 server.registerTool(
@@ -457,9 +459,10 @@ server.registerTool(
       "Walk the local player's character toward a world position during an F5 playtest (Humanoid:MoveTo). Returns whether it reached the goal; reached=false can mean the ~8s move timeout. Client peer, so it requires start_playtest.",
     inputSchema: { x: z.number(), y: z.number(), z: z.number() },
   },
-  // 20s exceeds the runner's worst case (up to 10s waiting for the Humanoid plus the
-  // ~8s MoveTo self-timeout) so a slow spawn cannot drop the command.
-  async (args) => asText(await bridge.send("character_navigation", args, "client", 20000)),
+  // Routed to the server peer, which relays to the client. 40s covers the relay's
+  // client-ready wait (8s) plus the reply window (25s, which includes the Humanoid
+  // wait and the ~8s MoveTo self-timeout).
+  async (args) => asText(await bridge.send("character_navigation", args, "server", 40000)),
 );
 
 server.registerTool(

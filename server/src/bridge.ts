@@ -6,8 +6,10 @@ import { randomUUID } from "node:crypto";
 // a stale plugin fails loudly instead of registering without an id.
 export const PROTOCOL_VERSION = 2;
 
-// Who a command is for, within a Studio. The edit-side plugin polls as "plugin";
-// the injected in-play runners poll as "server" or "client".
+// Who a command is for, within a Studio. The edit-side plugin polls as "plugin" and
+// the injected in-play server runner polls as "server". "client" is a relay role:
+// the client cannot poll (HttpService is server-only), so the server runner forwards
+// client commands over a RemoteEvent. No client peer ever polls the bridge.
 export type Role = "plugin" | "server" | "client";
 const ROLES: readonly Role[] = ["plugin", "server", "client"];
 
@@ -165,7 +167,9 @@ export class Bridge {
         connected: this.isLive(s, "plugin"),
         lastSeenMsAgo: now - (s.peers.get("plugin") ?? 0),
         active: s.instanceId === this.activeId,
-        playtestActive: this.isLive(s, "server") || this.isLive(s, "client"),
+        // Only the server peer polls during a playtest (the client is relayed), so its
+        // liveness is what "a playtest is running" means.
+        playtestActive: this.isLive(s, "server"),
       }))
       .sort((a, b) => a.lastSeenMsAgo - b.lastSeenMsAgo);
   }

@@ -62,27 +62,31 @@ export async function stopSimulation(bridge: Bridge): Promise<BridgeResult> {
   return requestStop(bridge, "simulation");
 }
 
-interface PeerLogEntry {
+interface LogEntry {
   message: string;
   type: string;
   timestamp: number;
+}
+
+interface PeerLogEntry extends LogEntry {
   peer: Role;
 }
 
-// Aggregates the output log across the server and client runners. A peer that is
-// not present (for example no client under F8) simply contributes nothing rather
-// than failing the call. Entries are merged, deduped by timestamp+message, and
-// sorted oldest first; the merge happens here, never in-engine.
+// Asks the server runner for the output log. Only the server peer talks to the
+// bridge, so it returns its own entries plus the client's (fetched over the relay)
+// as two arrays. The merge and dedup happen here (Node), never in-engine. A missing
+// client (for example under F8) just yields an empty client array.
 export async function getPlaytestOutput(bridge: Bridge): Promise<BridgeResult> {
-  const peers: Role[] = ["server", "client"];
-  const settled = await Promise.allSettled(peers.map((role) => bridge.send("get_logs", {}, role, 5000)));
-
-  const entriesFrom = (index: number): Array<{ message: string; type: string; timestamp: number }> => {
-    const result = settled[index];
-    if (result.status !== "fulfilled" || !result.value.ok) return [];
-    const data = result.value.data as { entries?: Array<{ message: string; type: string; timestamp: number }> } | undefined;
-    return data?.entries ?? [];
-  };
+  let result: BridgeResult;
+  try {
+    // 40s exceeds the runner's relay ceiling (8s client-ready wait plus 25s reply
+    // window), so a slow client never trips this before the server returns its logs.
+    result = await bridge.send("get_logs", {}, "server", 40000);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (!result.ok) return result;
+  const data = result.data as { serverEntries?: LogEntry[]; clientEntries?: LogEntry[] } | undefined;
 
   // Keep every server entry (including legitimate repeats), then keep client
   // entries except those that echo a server message (Studio mirrors server output
@@ -90,13 +94,13 @@ export async function getPlaytestOutput(bridge: Bridge): Promise<BridgeResult> {
   // peer's own repeated lines.
   const entries: PeerLogEntry[] = [];
   const serverKeys = new Set<string>();
-  for (const entry of entriesFrom(0)) {
+  for (const entry of data?.serverEntries ?? []) {
     serverKeys.add(`${entry.timestamp}|${entry.message}`);
-    entries.push({ message: entry.message, type: entry.type, timestamp: entry.timestamp, peer: "server" });
+    entries.push({ ...entry, peer: "server" });
   }
-  for (const entry of entriesFrom(1)) {
+  for (const entry of data?.clientEntries ?? []) {
     if (serverKeys.has(`${entry.timestamp}|${entry.message}`)) continue;
-    entries.push({ message: entry.message, type: entry.type, timestamp: entry.timestamp, peer: "client" });
+    entries.push({ ...entry, peer: "client" });
   }
   entries.sort((a, b) => a.timestamp - b.timestamp);
   return { ok: true, data: { entries } };
