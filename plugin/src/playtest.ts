@@ -18,9 +18,11 @@ const ScriptEditorService = game.GetService("ScriptEditorService");
 
 const RUNNER_NAME = "TripwireRunner";
 
+// Both take a required args Variant (the test can read it back via GetTestArgs).
+// args is non-optional on purpose: omitting it throws "Argument 1 missing or nil".
 interface StudioTestServiceLike {
-	ExecutePlayModeAsync(args?: unknown): unknown;
-	ExecuteRunModeAsync(args?: unknown): unknown;
+	ExecutePlayModeAsync(args: unknown): unknown;
+	ExecuteRunModeAsync(args: unknown): unknown;
 }
 
 // StudioTestService may not be in the typed Services map, so reach it through a
@@ -89,8 +91,9 @@ function startSession(source: string, mode: "play" | "run"): CommandResult {
 		// Surface a start failure in the Output. Execute*Async blocks until the session
 		// ends, so on success this returns only afterwards (nothing to warn); an
 		// immediate throw (API rejected the call) is reported here instead of vanishing.
+		// Pass an empty args table; the runner self-bootstraps and does not read it.
 		const [ok, err] = pcall(() =>
-			mode === "play" ? studioTest.ExecutePlayModeAsync() : studioTest.ExecuteRunModeAsync(),
+			mode === "play" ? studioTest.ExecutePlayModeAsync({}) : studioTest.ExecuteRunModeAsync({}),
 		);
 		if (!ok) warn(`[Tripwire v${TRIPWIRE_VERSION}] start ${mode} failed: ${err}`);
 		removeRunners(); // the session ended; remove the injected scripts from edit
