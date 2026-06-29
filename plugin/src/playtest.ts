@@ -86,7 +86,13 @@ function startSession(source: string, mode: "play" | "run"): CommandResult {
 	// this handler's start ack is posted (which could time out the start call).
 	// task.defer lets the handler post its result first, then runs the blocking call.
 	task.defer(() => {
-		pcall(() => (mode === "play" ? studioTest.ExecutePlayModeAsync() : studioTest.ExecuteRunModeAsync()));
+		// Surface a start failure in the Output. Execute*Async blocks until the session
+		// ends, so on success this returns only afterwards (nothing to warn); an
+		// immediate throw (API rejected the call) is reported here instead of vanishing.
+		const [ok, err] = pcall(() =>
+			mode === "play" ? studioTest.ExecutePlayModeAsync() : studioTest.ExecuteRunModeAsync(),
+		);
+		if (!ok) warn(`[Tripwire v${TRIPWIRE_VERSION}] start ${mode} failed: ${err}`);
 		removeRunners(); // the session ended; remove the injected scripts from edit
 	});
 	return { ok: true, data: { started: true, mode } };
