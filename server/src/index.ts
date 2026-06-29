@@ -63,8 +63,10 @@ server.registerTool(
   },
   async ({ script }) => {
     const r = await runLuau(script);
-    const body = r.ok ? `OK\n${r.logs.join("\n")}` : `FAILED: ${r.error}\n${r.logs.join("\n")}`;
-    return { content: [{ type: "text", text: body }] };
+    const lines: string[] = [r.ok ? "OK" : `FAILED: ${r.error}`];
+    if (r.results && r.results.length > 0) lines.push(`return: ${JSON.stringify(r.results)}`);
+    if (r.logs.length > 0) lines.push("logs:", ...r.logs);
+    return { content: [{ type: "text", text: lines.join("\n") }] };
   },
 );
 
