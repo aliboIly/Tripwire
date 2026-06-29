@@ -21,16 +21,9 @@ tools need no API key; the headless test, asset, and Open Cloud tools use an Ope
 
 ## Install
 
-Tripwire is a Rust stdio MCP server. Build it once with [Rust](https://rustup.rs), then point your
-client at the binary.
-
-```bash
-git clone https://github.com/aliboIly/Tripwire.git
-cd Tripwire/server
-cargo build --release   # produces server/target/release/tripwire-server
-```
-
-Replace `/ABS/PATH` below with the absolute path to your clone.
+Tripwire's server is a single binary. The easiest way to run it is with `npx`, which fetches the
+prebuilt binary for your platform, so there is no Rust toolchain to install. Prefer a manual binary
+or a source build? See the Alternatives at the end of this section.
 
 <details>
 <summary><b>Claude Code</b></summary>
@@ -38,7 +31,7 @@ Replace `/ABS/PATH` below with the absolute path to your clone.
 One command:
 
 ```bash
-claude mcp add --transport stdio tripwire -- /ABS/PATH/Tripwire/server/target/release/tripwire-server
+claude mcp add --transport stdio tripwire -- npx -y tripwire-roblox
 ```
 
 Or add it to a project `.mcp.json` (or `~/.claude.json`):
@@ -48,8 +41,8 @@ Or add it to a project `.mcp.json` (or `~/.claude.json`):
   "mcpServers": {
     "tripwire": {
       "type": "stdio",
-      "command": "/ABS/PATH/Tripwire/server/target/release/tripwire-server",
-      "args": []
+      "command": "npx",
+      "args": ["-y", "tripwire-roblox"]
     }
   }
 }
@@ -64,11 +57,11 @@ Add to `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.tripwire]
-command = "/ABS/PATH/Tripwire/server/target/release/tripwire-server"
-args = []
+command = "npx"
+args = ["-y", "tripwire-roblox"]
 ```
 
-Or: `codex mcp add tripwire -- /ABS/PATH/Tripwire/server/target/release/tripwire-server`
+Or: `codex mcp add tripwire -- npx -y tripwire-roblox`
 
 </details>
 
@@ -81,26 +74,46 @@ Add to `~/.gemini/settings.json` (or a project `.gemini/settings.json`):
 {
   "mcpServers": {
     "tripwire": {
-      "command": "/ABS/PATH/Tripwire/server/target/release/tripwire-server",
-      "args": []
+      "command": "npx",
+      "args": ["-y", "tripwire-roblox"]
     }
   }
 }
 ```
 
-Or: `gemini mcp add tripwire /ABS/PATH/Tripwire/server/target/release/tripwire-server`
+Or: `gemini mcp add tripwire npx -y tripwire-roblox`
 
 </details>
 
 <details>
 <summary><b>Other MCP clients</b></summary>
 
-Any client that speaks MCP over stdio can run it. Launch the binary directly:
+Any client that speaks MCP over stdio can run it:
 
 ```
-command: /ABS/PATH/Tripwire/server/target/release/tripwire-server
-args:    []
+command: npx
+args:    ["-y", "tripwire-roblox"]
 ```
+
+</details>
+
+<details>
+<summary><b>Alternatives: prebuilt binary, or build from source</b></summary>
+
+**Prebuilt binary (no Node).** Download the archive for your platform from the
+[Releases](https://github.com/aliboIly/Tripwire/releases) page (for example
+`tripwire-server-vX.Y.Z-aarch64-apple-darwin.tar.gz`), extract it, and point your client's
+`command` at the extracted `tripwire-server` with empty `args`.
+
+**Build from source** (needs [Rust](https://rustup.rs)):
+
+```bash
+git clone https://github.com/aliboIly/Tripwire.git
+cd Tripwire/server
+cargo build --release   # produces server/target/release/tripwire-server
+```
+
+Then point your client's `command` at that binary path.
 
 </details>
 

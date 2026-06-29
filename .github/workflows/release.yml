@@ -8,49 +8,123 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  plugin:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: "20"
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: server
       - name: Install Rokit
         run: |
-          curl -fsSL https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh | bash
+          # raw.githubusercontent occasionally 403s a shared runner IP; retry the fetch.
+          for attempt in 1 2 3; do
+            curl -fsSL https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh -o /tmp/rokit-install.sh && break
+            echo "rokit install script download failed (attempt $attempt); retrying"; sleep 10
+          done
+          bash /tmp/rokit-install.sh
           echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
       - name: Install pinned tools (rojo, lune)
         run: rokit install --no-trust-check
-
       - name: Build plugin
         working-directory: plugin
         run: |
           npm ci
           npx rbxtsc
           rojo build --output Tripwire.rbxmx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin
+          path: plugin/Tripwire.rbxmx
 
-      - name: Build server
+  # One prebuilt server binary per platform, so end users never need a Rust toolchain.
+  server:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+          key: ${{ matrix.target }}
+      - name: Build
         working-directory: server
-        run: cargo build --release
+        run: cargo build --release --target ${{ matrix.target }}
+      # All archives are .tar.gz; Windows 10+ ships bsdtar, so the npm installer can
+      # use a single extraction path on every platform.
+      - name: Package
+        shell: bash
+        working-directory: server
+        run: |
+          bin="tripwire-server"
+          [ "${{ matrix.os }}" = "windows-latest" ] && bin="tripwire-server.exe"
+          tar -czf "../tripwire-server-${{ github.ref_name }}-${{ matrix.target }}.tar.gz" \
+            -C "target/${{ matrix.target }}/release" "$bin"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-${{ matrix.target }}
+          path: tripwire-server-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
 
-      - name: Package server
-        run: tar -czf "tripwire-server-${{ github.ref_name }}-linux-x86_64.tar.gz" -C server/target/release tripwire-server
-
+  release:
+    needs: [plugin, server]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: List artifacts
+        run: ls -R dist
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Only a suffixed tag (for example v0.2.0-rc1) is a prerelease; a plain
+          # vX.Y.Z is a full, public release.
           prerelease=""
           case "${{ github.ref_name }}" in
-            v0.*|*-*) prerelease="--prerelease" ;;
+            *-*) prerelease="--prerelease" ;;
           esac
           gh release create "${{ github.ref_name }}" \
-            plugin/Tripwire.rbxmx \
-            "tripwire-server-${{ github.ref_name }}-linux-x86_64.tar.gz" \
+            dist/Tripwire.rbxmx \
+            dist/tripwire-server-*.tar.gz \
             --title "${{ github.ref_name }}" \
             --generate-notes \
             $prerelease
+
+  # Publishes the npm wrapper that downloads the binary above. Runs only if an
+  # NPM_TOKEN secret is set, so it is a no-op until you opt in.
+  npm:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - name: Publish
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN not set; skipping npm publish."
+            exit 0
+          fi
+          npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+          npm publish --access public

@@ -21,8 +21,10 @@ jobs:
         with:
           workspaces: server
       - run: cargo fmt --check
-      - run: cargo clippy -- -D warnings
-      - run: cargo build --release
+      # clippy compiles the crate in debug, so it doubles as the build gate; a
+      # separate --release build here would recompile the whole tree (swc included)
+      # a second time for no extra coverage.
+      - run: cargo clippy --all-targets -- -D warnings
 
   plugin:
     runs-on: ubuntu-latest
@@ -35,7 +37,12 @@ jobs:
           cache-dependency-path: plugin/package-lock.json
       - name: Install Rokit
         run: |
-          curl -fsSL https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh | bash
+          # raw.githubusercontent occasionally 403s a shared runner IP; retry the fetch.
+          for attempt in 1 2 3; do
+            curl -fsSL https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh -o /tmp/rokit-install.sh && break
+            echo "rokit install script download failed (attempt $attempt); retrying"; sleep 10
+          done
+          bash /tmp/rokit-install.sh
           echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
       - name: Install pinned tools (rojo, lune)
         run: rokit install --no-trust-check
