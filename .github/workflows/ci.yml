@@ -45,3 +45,18 @@ jobs:
       - name: Build rbxmx
         working-directory: plugin
         run: rojo build --output Tripwire.rbxmx
+
+  sample-game:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: sample-game/package-lock.json
+      - name: Build sample game
+        working-directory: sample-game
+        run: |
+          npm ci
+          npx rbxtsc

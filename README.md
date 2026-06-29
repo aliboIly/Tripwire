@@ -25,4 +25,4 @@ attached.
 - `server/`: the MCP server (Node TypeScript). Tool dispatch, the local bridge, the Open Cloud client.
 - `plugin/`: the Studio plugin (roblox-ts, compiled to Luau). Long-polls the bridge and runs actions.
 - `runner/`: the in-play runner (Luau), injected at playtest start.
-- `sample-game/`: a Rojo test target (lands in Phase 4).
+- `sample-game/`: a server-authoritative Rojo game used as the test and security-review target. It carries one deliberate client-trust hole for the reviewer to flag.

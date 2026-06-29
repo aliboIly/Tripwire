@@ -1,0 +1,20 @@
+{
+	"name": "tripwire-sample-game",
+	"version": "0.0.1",
+	"private": true,
+	"description": "Server-authoritative sample game used as the Tripwire test and security-review target. It contains one deliberate client-trust hole for the security reviewer to flag.",
+	"scripts": {
+		"build": "rbxtsc",
+		"watch": "rbxtsc -w"
+	},
+	"type": "commonjs",
+	"dependencies": {
+		"@rbxts/services": "^1.6.0"
+	},
+	"devDependencies": {
+		"@rbxts/compiler-types": "^3.0.0-types.0",
+		"@rbxts/types": "^1.0.930",
+		"roblox-ts": "^3.0.0",
+		"typescript": "^5.9.3"
+	}
+}
