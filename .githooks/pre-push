@@ -1,0 +1,35 @@
+#!/bin/sh
+# Rebuild the Studio plugin before every push so the installable Tripwire.rbxmx
+# always matches the source version. The plugin prints its *compiled* version in
+# the Output prefix ("[Tripwire vX.Y.Z]"), so a stale build silently reports the
+# wrong version even when the source is current. This keeps the local artifact
+# honest; the .rbxmx itself is gitignored and ships via GitHub releases.
+#
+# Enable on a fresh clone with:  git config core.hooksPath .githooks
+
+set -e
+
+repo_root="$(git rev-parse --show-toplevel)"
+plugin_dir="$repo_root/plugin"
+
+# A server-only checkout without the plugin toolchain shouldn't be blocked from
+# pushing. Skip loudly instead so it's obvious the artifact wasn't refreshed.
+if [ ! -d "$plugin_dir/node_modules" ] || ! command -v rojo >/dev/null 2>&1; then
+	echo "pre-push: plugin toolchain not available (need plugin/node_modules + rojo); skipping plugin rebuild." >&2
+	exit 0
+fi
+
+echo "pre-push: rebuilding Tripwire plugin so the installable .rbxmx matches source..." >&2
+cd "$plugin_dir"
+npm run build >/dev/null
+rojo build --output Tripwire.rbxmx
+
+# Belt and suspenders: the built artifact must carry the source version, or an
+# install would report the wrong build. Fail the push loudly if they diverge.
+src_version="$(sed -n 's/.*TRIPWIRE_VERSION = "\([0-9.]*\)".*/\1/p' src/protocol.ts)"
+if [ -n "$src_version" ] && ! grep -q "$src_version" Tripwire.rbxmx; then
+	echo "pre-push: built .rbxmx does not contain source version $src_version; aborting push." >&2
+	exit 1
+fi
+
+echo "pre-push: Tripwire.rbxmx rebuilt at v${src_version}. Reinstall it in Studio to pick up the new build." >&2
