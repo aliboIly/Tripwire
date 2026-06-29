@@ -5,6 +5,13 @@ import { z } from "zod";
 import { Bridge, BridgeResult } from "./bridge.js";
 import { runLuau } from "./cloud.js";
 import { reviewSecurity, formatReport, SecurityReport } from "./security.js";
+import {
+  runTests as harnessRunTests,
+  runTestFile,
+  listTests as harnessListTests,
+  formatHarness,
+  formatTestList,
+} from "./harness.js";
 
 // This process speaks MCP over stdout. Never console.log to stdout, since it
 // corrupts the protocol stream. Diagnostics go to stderr.
@@ -78,6 +85,34 @@ server.registerTool(
     if (r.logs.length > 0) lines.push("logs:", ...r.logs);
     return { content: [{ type: "text", text: lines.join("\n") }] };
   },
+);
+
+server.registerTool(
+  "run_tests",
+  {
+    description:
+      "Run the headless test suite in the published place via Open Cloud and report passed/failed with failure messages. The place must be published (rbxtsc, rojo build, publish) and the Open Cloud env must be set.",
+    inputSchema: {},
+  },
+  async () => ({ content: [{ type: "text", text: formatHarness(await harnessRunTests()) }] }),
+);
+
+server.registerTool(
+  "run_test_file",
+  {
+    description: "Run a single spec by its ModuleScript name (for example 'economy.spec') headlessly via Open Cloud.",
+    inputSchema: { file: z.string() },
+  },
+  async ({ file }) => ({ content: [{ type: "text", text: formatHarness(await runTestFile(file)) }] }),
+);
+
+server.registerTool(
+  "list_tests",
+  {
+    description: "List the spec files and their cases discovered in the published place. Runs no tests.",
+    inputSchema: {},
+  },
+  async () => ({ content: [{ type: "text", text: formatTestList(await harnessListTests()) }] }),
 );
 
 server.registerTool(
