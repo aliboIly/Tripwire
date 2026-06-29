@@ -17,7 +17,8 @@ attached.
 
 ## Read first
 
-`Docs/Dev/SETUP.md` has every command to install, build, and run.
+- `Docs/ARCHITECTURE.md` explains how the repo fits together, file by file.
+- `Docs/Dev/SETUP.md` has every command to install, build, and run.
 
 ## Layout
 
