@@ -47,10 +47,19 @@ function removeRunners(): void {
 	}
 }
 
-function injectRunner(source: string, runContext: Enum.RunContext, parent: Instance): void {
-	const runner = new Instance("Script");
+function injectRunner(source: string, kind: "server" | "client", parent: Instance): void {
+	let runner: Script | LocalScript;
+	if (kind === "server") {
+		const serverScript = new Instance("Script");
+		serverScript.RunContext = Enum.RunContext.Server;
+		runner = serverScript;
+	} else {
+		// A LocalScript runs once, when copied into PlayerScripts. A Script with
+		// RunContext.Client in StarterPlayerScripts runs twice (once in the container,
+		// once in the copy), which would double every relayed input.
+		runner = new Instance("LocalScript");
+	}
 	runner.Name = RUNNER_NAME;
-	runner.RunContext = runContext;
 	runner.Parent = parent;
 	// Write source through the editor service, never Script.Source directly.
 	ScriptEditorService.UpdateSourceAsync(runner, () => source);
@@ -66,10 +75,10 @@ function startSession(source: string, mode: "play" | "run"): CommandResult {
 	// protocol version; these two are known only here.
 	const [withId] = source.gsub("{{INSTANCE_ID}}", INSTANCE_ID);
 	const [filled] = withId.gsub("{{VERSION}}", TRIPWIRE_VERSION);
-	injectRunner(filled, Enum.RunContext.Server, ServerScriptService);
+	injectRunner(filled, "server", ServerScriptService);
 	if (mode === "play") {
 		const clientContainer = clientScriptsContainer();
-		if (clientContainer !== undefined) injectRunner(filled, Enum.RunContext.Client, clientContainer);
+		if (clientContainer !== undefined) injectRunner(filled, "client", clientContainer);
 	}
 
 	const studioTest = getStudioTestService();
