@@ -1,0 +1,23 @@
+# Per-package dependencies and build output
+node_modules/
+**/node_modules/
+server/dist/
+plugin/out/
+plugin/include/
+*.tsbuildinfo
+
+# Roblox build artifacts (the plugin .rbxmx ships via GitHub releases, not git)
+*.rbxmx
+*.rbxm
+*.rbxlx.lock
+
+# Secrets and local env. The server reads ROBLOX_OPEN_CLOUD_KEY from env; never commit it
+.env
+.env.*
+!.env.example
+
+# Rokit-managed tool binaries (resolved from rokit.toml)
+/.rokit
+
+# OS / editor cruft
+.DS_Store
