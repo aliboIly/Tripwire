@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { Bridge, BridgeResult } from "./bridge.js";
 import { runLuau } from "./cloud.js";
+import { reviewSecurity, formatReport, SecurityReport } from "./security.js";
 
 // This process speaks MCP over stdout. Never console.log to stdout, since it
 // corrupts the protocol stream. Diagnostics go to stderr.
@@ -107,6 +108,52 @@ server.registerTool(
     inputSchema: { path: z.string().optional() },
   },
   async ({ path }) => asText(await bridge.send("get_instance_properties", { path })),
+);
+
+// The security tools run a local static analysis over a Rojo source tree. They
+// need no Studio session or Open Cloud key. The default target assumes the server
+// runs from the repo root.
+const DEFAULT_SECURITY_TARGET = "sample-game/src";
+
+function securityText(
+  path: string | undefined,
+  render: (report: SecurityReport) => string,
+): { content: Array<{ type: "text"; text: string }> } {
+  try {
+    return { content: [{ type: "text", text: render(reviewSecurity(path ?? DEFAULT_SECURITY_TARGET)) }] };
+  } catch (err) {
+    return { content: [{ type: "text", text: `Error: ${err instanceof Error ? err.message : String(err)}` }] };
+  }
+}
+
+server.registerTool(
+  "scan_remotes",
+  {
+    description:
+      "List RemoteEvent and RemoteFunction server handlers in a Rojo source tree (default sample-game/src), with the client-controlled parameters of each. Static analysis, read-only.",
+    inputSchema: { path: z.string().optional() },
+  },
+  async ({ path }) => securityText(path, (r) => JSON.stringify(r.handlers, undefined, 2)),
+);
+
+server.registerTool(
+  "scan_client_trust",
+  {
+    description:
+      "Scan a Rojo source tree (default sample-game/src) for client-trust holes: server handlers that use client-supplied values without validating them. Static analysis, read-only.",
+    inputSchema: { path: z.string().optional() },
+  },
+  async ({ path }) => securityText(path, (r) => JSON.stringify(r.findings, undefined, 2)),
+);
+
+server.registerTool(
+  "review_security",
+  {
+    description:
+      "Review a Rojo source tree (default sample-game/src) for client-trust and unvalidated-remote issues, and report each finding with a suggested server-side fix. Static analysis, read-only.",
+    inputSchema: { path: z.string().optional() },
+  },
+  async ({ path }) => securityText(path, formatReport),
 );
 
 const transport = new StdioServerTransport();
