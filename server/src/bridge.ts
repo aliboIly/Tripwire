@@ -39,8 +39,14 @@ export class Bridge {
   connected = false;
   placeName = "(unknown)";
   lastError?: string;
+  private bridgeReady = false;
 
   send(type: string, payload: unknown, timeoutMs = 30000): Promise<BridgeResult> {
+    // Fail fast if the bridge never bound (for example another Tripwire server
+    // already holds the port) rather than making every Studio call wait out the timeout.
+    if (!this.bridgeReady) {
+      return Promise.reject(new Error(this.lastError ?? "Tripwire bridge is not running."));
+    }
     const id = randomUUID();
     const cmd: Command = { id, type, payload };
     return new Promise<BridgeResult>((resolve, reject) => {
@@ -96,6 +102,21 @@ export class Bridge {
         });
       }
       json(res, 404, { ok: false, error: "not found" });
+    });
+    // Handle a bind failure instead of letting the unhandled error event crash the
+    // whole MCP server. The most common cause is another Tripwire server already on
+    // this port; the MCP still serves every tool that does not need Studio.
+    srv.on("error", (err: NodeJS.ErrnoException) => {
+      this.bridgeReady = false;
+      this.lastError =
+        err.code === "EADDRINUSE"
+          ? `bridge port ${port} is already in use, most likely by another Tripwire server. ` +
+            `Close the other one, then reconnect; Studio tools are unavailable until then.`
+          : `bridge failed to start: ${err.message}`;
+      process.stderr.write(`[tripwire] ${this.lastError}\n`);
+    });
+    srv.on("listening", () => {
+      this.bridgeReady = true;
     });
     srv.listen(port, "127.0.0.1");
     return srv;
