@@ -19,6 +19,7 @@ import {
   stopPlaytest,
   getPlaytestOutput,
 } from "./playtest.js";
+import { uploadAsset } from "./assets.js";
 
 // This process speaks MCP over stdout. Never console.log to stdout, since it
 // corrupts the protocol stream. Diagnostics go to stderr.
@@ -312,6 +313,28 @@ server.registerTool(
     },
   },
   async (args) => asText(await bridge.send("mass_set_property", args, "plugin", 60000)),
+);
+
+server.registerTool(
+  "upload_asset",
+  {
+    description:
+      "Upload a local file as a Roblox asset via Open Cloud (Decal, Audio, Model, Animation, or Video) and return its assetId. Needs ROBLOX_OPEN_CLOUD_KEY (assets read+write scope) and ROBLOX_CREATOR_USER_ID or ROBLOX_CREATOR_GROUP_ID in the server env. The upload is asynchronous; this polls until it is processed, and reports a moderation rejection as an error.",
+    inputSchema: {
+      filePath: z.string(),
+      assetType: z.enum(["Decal", "Audio", "Model", "Animation", "Video"]),
+      displayName: z.string(),
+      description: z.string().optional(),
+      contentType: z.string().optional(),
+    },
+  },
+  async (args) => {
+    const r = await uploadAsset(args);
+    const text = r.ok
+      ? `Uploaded. assetId: ${r.assetId}${r.revisionId !== undefined ? `, revisionId: ${r.revisionId}` : ""}`
+      : `Error: ${r.error}`;
+    return { content: [{ type: "text", text }] };
+  },
 );
 
 server.registerTool(
