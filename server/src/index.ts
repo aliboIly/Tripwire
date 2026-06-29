@@ -22,6 +22,34 @@ import {
 } from "./playtest.js";
 import { uploadAsset } from "./assets.js";
 import { publishPlace } from "./publish.js";
+import {
+  OcResult,
+  listDatastores,
+  listDatastoreEntries,
+  getDatastoreEntry,
+  setDatastoreEntry,
+  deleteDatastoreEntry,
+  incrementDatastoreEntry,
+  listOrderedEntries,
+  getOrderedEntry,
+  setOrderedEntry,
+  incrementOrderedEntry,
+  publishMessage,
+  memorySortedMapSet,
+  memorySortedMapGet,
+  memorySortedMapList,
+  memorySortedMapDelete,
+  memoryQueueAdd,
+  memoryQueueRead,
+  memoryQueueDiscard,
+  getUniverse,
+  getPlace,
+  getUser,
+  getGroup,
+  listInventory,
+  sendNotification,
+  getSubscription,
+} from "./opencloud.js";
 import { config as loadEnv } from "dotenv";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -176,6 +204,281 @@ server.registerTool(
     const r = await publishPlace({ filePath, versionType });
     return { content: [{ type: "text", text: r.ok ? `Published version ${r.versionNumber}.` : `Error: ${r.error}` }] };
   },
+);
+
+// Open Cloud REST tools (opencloud.ts). Each works when the key has the matching
+// scope and returns Roblox's error (insufficient-scope 401/403, 404, etc.) otherwise.
+const ocText = (r: OcResult) => ({
+  content: [{ type: "text" as const, text: r.ok ? JSON.stringify(r.data, undefined, 2) : `Error: ${r.error}` }],
+});
+
+// --- Standard DataStores (universe-scoped) ---
+server.registerTool(
+  "list_datastores",
+  {
+    description:
+      "List the standard data stores in the configured universe (scope universe-datastores.control:list). Optional name prefix and pagination (pass nextPageToken back as pageToken).",
+    inputSchema: { prefix: z.string().optional(), maxPageSize: z.number().int().optional(), pageToken: z.string().optional() },
+  },
+  async (a) => ocText(await listDatastores(a)),
+);
+server.registerTool(
+  "list_datastore_entries",
+  {
+    description:
+      "List entry keys in a data store (scope universe-datastores.objects:list). Keys only; read a value with get_datastore_entry. Optional prefix and pagination.",
+    inputSchema: {
+      datastore: z.string(),
+      prefix: z.string().optional(),
+      maxPageSize: z.number().int().optional(),
+      pageToken: z.string().optional(),
+    },
+  },
+  async (a) => ocText(await listDatastoreEntries(a)),
+);
+server.registerTool(
+  "get_datastore_entry",
+  {
+    description: "Read a data store entry's value and metadata (scope universe-datastores.objects:read). 404 means no such key.",
+    inputSchema: { datastore: z.string(), entry: z.string() },
+  },
+  async (a) => ocText(await getDatastoreEntry(a)),
+);
+server.registerTool(
+  "set_datastore_entry",
+  {
+    description:
+      "Create or overwrite a data store entry (upsert; scope universe-datastores.objects:update, plus create for a new key). value is any JSON. users/attributes are cleared if omitted, so pass them every time you set them.",
+    inputSchema: {
+      datastore: z.string(),
+      entry: z.string(),
+      value: z.unknown(),
+      users: z.array(z.string()).optional(),
+      attributes: z.record(z.unknown()).optional(),
+    },
+  },
+  async (a) => ocText(await setDatastoreEntry(a)),
+);
+server.registerTool(
+  "delete_datastore_entry",
+  {
+    description: "Soft-delete a data store entry (scope universe-datastores.objects:delete); it is purged after 30 days.",
+    inputSchema: { datastore: z.string(), entry: z.string() },
+  },
+  async (a) => ocText(await deleteDatastoreEntry(a)),
+);
+server.registerTool(
+  "increment_datastore_entry",
+  {
+    description:
+      "Atomically add an integer to a numeric data store entry (scope universe-datastores.objects:create+update); creates it if missing. The existing value must be an integer.",
+    inputSchema: {
+      datastore: z.string(),
+      entry: z.string(),
+      amount: z.number().int(),
+      users: z.array(z.string()).optional(),
+      attributes: z.record(z.unknown()).optional(),
+    },
+  },
+  async (a) => ocText(await incrementDatastoreEntry(a)),
+);
+
+// --- Ordered DataStores (non-negative integers; default scope "global") ---
+server.registerTool(
+  "list_ordered_entries",
+  {
+    description:
+      "List ordered data store entries by value (scope universe.ordered-data-store.scope.entry:read). descending sorts high to low. filter is a numeric range like 'entry >= 10 && entry <= 50'.",
+    inputSchema: {
+      store: z.string(),
+      scope: z.string().optional(),
+      descending: z.boolean().optional(),
+      maxPageSize: z.number().int().optional(),
+      pageToken: z.string().optional(),
+      filter: z.string().optional(),
+    },
+  },
+  async (a) => ocText(await listOrderedEntries(a)),
+);
+server.registerTool(
+  "get_ordered_entry",
+  {
+    description: "Read one ordered data store entry's integer value (scope universe.ordered-data-store.scope.entry:read).",
+    inputSchema: { store: z.string(), scope: z.string().optional(), entry: z.string() },
+  },
+  async (a) => ocText(await getOrderedEntry(a)),
+);
+server.registerTool(
+  "set_ordered_entry",
+  {
+    description:
+      "Set (overwrite/upsert) an ordered data store entry to a non-negative integer (scope universe.ordered-data-store.scope.entry:write).",
+    inputSchema: { store: z.string(), scope: z.string().optional(), entry: z.string(), value: z.number().int() },
+  },
+  async (a) => ocText(await setOrderedEntry(a)),
+);
+server.registerTool(
+  "increment_ordered_entry",
+  {
+    description:
+      "Atomically add an integer to an ordered data store entry (scope universe.ordered-data-store.scope.entry:write); the result must stay non-negative.",
+    inputSchema: { store: z.string(), scope: z.string().optional(), entry: z.string(), amount: z.number().int() },
+  },
+  async (a) => ocText(await incrementOrderedEntry(a)),
+);
+
+// --- MessagingService ---
+server.registerTool(
+  "publish_message",
+  {
+    description:
+      "Publish a message to a MessagingService topic in the universe (scope universe-messaging-service:publish). Reaches only running production servers subscribed to the topic; no read side. topic <= 80 chars, message <= 1 KiB.",
+    inputSchema: { topic: z.string(), message: z.string() },
+  },
+  async (a) => ocText(await publishMessage(a)),
+);
+
+// --- Memory Stores ---
+server.registerTool(
+  "memory_sorted_map_set",
+  {
+    description:
+      "Set (upsert) a Memory Store sorted-map item (scope memory-store.sorted-map:write). value is any JSON; ttlSeconds sets expiry; stringSortKey/numericSortKey set the sort order.",
+    inputSchema: {
+      map: z.string(),
+      item: z.string(),
+      value: z.unknown(),
+      ttlSeconds: z.number().int().optional(),
+      stringSortKey: z.string().optional(),
+      numericSortKey: z.number().optional(),
+    },
+  },
+  async (a) => ocText(await memorySortedMapSet(a)),
+);
+server.registerTool(
+  "memory_sorted_map_get",
+  {
+    description: "Read a Memory Store sorted-map item (scope memory-store.sorted-map:read). 404 if absent or expired.",
+    inputSchema: { map: z.string(), item: z.string() },
+  },
+  async (a) => ocText(await memorySortedMapGet(a)),
+);
+server.registerTool(
+  "memory_sorted_map_list",
+  {
+    description:
+      "List Memory Store sorted-map items in sort order (scope memory-store.sorted-map:read). descending reverses; filter is a CEL range over id/sortKey. Paginated.",
+    inputSchema: {
+      map: z.string(),
+      descending: z.boolean().optional(),
+      maxPageSize: z.number().int().optional(),
+      pageToken: z.string().optional(),
+      filter: z.string().optional(),
+    },
+  },
+  async (a) => ocText(await memorySortedMapList(a)),
+);
+server.registerTool(
+  "memory_sorted_map_delete",
+  {
+    description: "Delete a Memory Store sorted-map item (scope memory-store.sorted-map:write).",
+    inputSchema: { map: z.string(), item: z.string() },
+  },
+  async (a) => ocText(await memorySortedMapDelete(a)),
+);
+server.registerTool(
+  "memory_queue_add",
+  {
+    description:
+      "Add an item to a Memory Store queue (scope memory-store.queue:add). data is any JSON (required); higher priority dequeues first; ttlSeconds sets expiry.",
+    inputSchema: { queue: z.string(), data: z.unknown(), priority: z.number().optional(), ttlSeconds: z.number().int().optional() },
+  },
+  async (a) => ocText(await memoryQueueAdd(a)),
+);
+server.registerTool(
+  "memory_queue_read",
+  {
+    description:
+      "Read items from a Memory Store queue (scope memory-store.queue:dequeue); returns a readId. Pass that readId to memory_queue_discard before the invisibility window (default 30s) elapses, or the items reappear.",
+    inputSchema: {
+      queue: z.string(),
+      count: z.number().int().optional(),
+      invisibilitySeconds: z.number().int().optional(),
+      allOrNothing: z.boolean().optional(),
+    },
+  },
+  async (a) => ocText(await memoryQueueRead(a)),
+);
+server.registerTool(
+  "memory_queue_discard",
+  {
+    description:
+      "Permanently remove the items from a memory_queue_read batch (scope memory-store.queue:discard), using its readId.",
+    inputSchema: { queue: z.string(), readId: z.string() },
+  },
+  async (a) => ocText(await memoryQueueDiscard(a)),
+);
+
+// --- Platform info (read-only) ---
+server.registerTool(
+  "get_universe",
+  { description: "Get the configured universe's metadata (name, visibility, owner, root place, etc.).", inputSchema: {} },
+  async () => ocText(await getUniverse()),
+);
+server.registerTool(
+  "get_place",
+  { description: "Get the configured place's metadata (name, server size, etc.).", inputSchema: {} },
+  async () => ocText(await getPlace()),
+);
+server.registerTool(
+  "get_user",
+  {
+    description:
+      "Get a user's public profile (name, displayName, etc.). idVerified and social profiles need the user.advanced:read / user.social:read scopes.",
+    inputSchema: { userId: z.string() },
+  },
+  async (a) => ocText(await getUser(a)),
+);
+server.registerTool(
+  "get_group",
+  { description: "Get a group's metadata (name, owner, member count, etc.).", inputSchema: { groupId: z.string() } },
+  async (a) => ocText(await getGroup(a)),
+);
+server.registerTool(
+  "list_inventory",
+  {
+    description:
+      "List a user's inventory items (scope user.inventory-item:read; also gated by the user's inventory privacy). filter selects types, e.g. 'inventoryItemAssetTypes=HAT,TSHIRT_ACCESSORY' or 'assetIds=1,2,3'. Paginated.",
+    inputSchema: { userId: z.string(), filter: z.string().optional(), maxPageSize: z.number().int().optional(), pageToken: z.string().optional() },
+  },
+  async (a) => ocText(await listInventory(a)),
+);
+
+// --- Engagement ---
+server.registerTool(
+  "send_notification",
+  {
+    description:
+      "Send an experience notification to a user (scope user.user-notification:write). messageId is a notification-string template authored in the Creator Dashboard, not free text. parameters fills the template's placeholders. One notification per user per day per experience.",
+    inputSchema: {
+      userId: z.string(),
+      messageId: z.string(),
+      parameters: z
+        .record(z.object({ stringValue: z.string().optional(), int64Value: z.number().int().optional() }))
+        .optional(),
+      launchData: z.string().optional(),
+    },
+  },
+  async (a) => ocText(await sendNotification(a)),
+);
+server.registerTool(
+  "get_subscription",
+  {
+    description:
+      "Read a user's subscription to a subscription product (scope universe.subscription-product.subscription:read for the caller, or universe:write to read any user). userId is the subscriber. full returns state and timestamps, not just active/willRenew.",
+    inputSchema: { subscriptionProductId: z.string(), userId: z.string(), full: z.boolean().optional() },
+  },
+  async (a) => ocText(await getSubscription(a)),
 );
 
 server.registerTool(
