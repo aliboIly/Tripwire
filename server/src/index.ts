@@ -12,6 +12,7 @@ import {
   formatHarness,
   formatTestList,
 } from "./harness.js";
+import { startPlaytest, startSimulation, stopSimulation, stopPlaytest } from "./playtest.js";
 
 // This process speaks MCP over stdout. Never console.log to stdout, since it
 // corrupts the protocol stream. Diagnostics go to stderr.
@@ -258,6 +259,45 @@ server.registerTool(
     inputSchema: { path: z.string(), source: z.string() },
   },
   async (args) => asText(await bridge.send("update_script_source", args)),
+);
+
+server.registerTool(
+  "start_playtest",
+  {
+    description:
+      "Start an F5 playtest (separate server and client DataModels with a player). The plugin injects the in-play runner first, then starts the test via StudioTestService; if that is unavailable, press F5 and the runner still attaches. Live Studio only, not headless.",
+    inputSchema: {},
+  },
+  async () => asText(await startPlaytest(bridge, BRIDGE_PORT)),
+);
+
+server.registerTool(
+  "start_simulation",
+  {
+    description:
+      "Start an F8 run (server-only simulation, no client peer or player). The plugin injects the server runner and starts the run. Input simulation is not available under F8. Live Studio only.",
+    inputSchema: {},
+  },
+  async () => asText(await startSimulation(bridge, BRIDGE_PORT)),
+);
+
+server.registerTool(
+  "stop_simulation",
+  {
+    description: "Stop an F8 run. The server runner calls StudioTestService:EndTest; this is a clean, reliable stop.",
+    inputSchema: {},
+  },
+  async () => asText(await stopSimulation(bridge)),
+);
+
+server.registerTool(
+  "stop_playtest",
+  {
+    description:
+      "Stop an F5 playtest. Best-effort: F5 tears down two DataModels and can outlast the confirmation window, in which case you may need to press Stop. The server runner calls StudioTestService:EndTest.",
+    inputSchema: {},
+  },
+  async () => asText(await stopPlaytest(bridge)),
 );
 
 // The security tools run a local static analysis over a Rojo source tree. They

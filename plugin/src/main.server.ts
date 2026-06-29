@@ -6,6 +6,7 @@
 import { HttpService } from "@rbxts/services";
 import { BridgeCommand, CommandResult, PROTOCOL_VERSION } from "protocol";
 import { handleEdit } from "edit";
+import { handlePlaytest, sweepRunners } from "playtest";
 import { handleRead } from "read";
 import { handleScripts } from "scripts";
 import { handleStudio } from "studio";
@@ -32,7 +33,8 @@ function dispatch(cmd: BridgeCommand): CommandResult {
 	if (cmd.type === "ping") {
 		return { ok: true, data: { place: game.Name, payload: cmd.payload } };
 	}
-	const handled = handleRead(cmd) ?? handleScripts(cmd) ?? handleStudio(cmd) ?? handleEdit(cmd);
+	const handled =
+		handleRead(cmd) ?? handleScripts(cmd) ?? handleStudio(cmd) ?? handleEdit(cmd) ?? handlePlaytest(cmd);
 	if (handled !== undefined) return handled;
 	return { ok: false, error: `unknown command: ${cmd.type}` };
 }
@@ -50,7 +52,7 @@ function connect(): boolean {
 			Url: `${BRIDGE}/hello`,
 			Method: "POST",
 			Headers: { "Content-Type": "application/json" },
-			Body: HttpService.JSONEncode({ protocolVersion: PROTOCOL_VERSION, placeName: game.Name }),
+			Body: HttpService.JSONEncode({ protocolVersion: PROTOCOL_VERSION, role: "plugin", placeName: game.Name }),
 		});
 		// The server returns JSON on both success and a version mismatch (HTTP 409),
 		// so read the error message out of the body rather than the raw status.
@@ -67,7 +69,7 @@ function connect(): boolean {
 function loop(): void {
 	while (running) {
 		try {
-			const res = HttpService.RequestAsync({ Url: `${BRIDGE}/poll`, Method: "GET" });
+			const res = HttpService.RequestAsync({ Url: `${BRIDGE}/poll?role=plugin`, Method: "GET" });
 			if (res.Success) {
 				// 200 with a body is a command; 204 means the long-poll window elapsed
 				// with nothing queued, so poll again right away.
@@ -97,6 +99,7 @@ button.Click.Connect(() => {
 		button.SetActive(false);
 		return;
 	}
+	sweepRunners(); // clear any runner scripts left behind by a crashed session
 	running = true;
 	button.SetActive(true);
 	print("[Tripwire] connected");
