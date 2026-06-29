@@ -1,0 +1,33 @@
+name: Security review
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Build server
+        working-directory: server
+        run: |
+          npm ci
+          npm run build
+      - name: Run the security review
+        run: node server/dist/reviewCli.js sample-game/src > review.md
+      - name: Comment on the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        # Keep a single sticky comment: edit the bot's last one, or create it the first time.
+        run: gh pr comment "$PR" --body-file review.md --edit-last || gh pr comment "$PR" --body-file review.md

@@ -13,7 +13,8 @@ client input. None of those are bugs to chase; they fall out of how Studio works
 Download the latest `Tripwire.rbxmx` from the Releases page and drop it into your Studio
 plugins folder, or build it from source with `Docs/Dev/SETUP.md`. CI builds the server and the
 plugin on every pull request, and pushing a `vX.Y.Z` tag publishes a release with the `.rbxmx`
-attached.
+attached. Every pull request also gets an automated security review comment that flags
+client-trust holes in the game code.
 
 ## Read first
 
