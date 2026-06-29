@@ -169,6 +169,22 @@ server.registerTool(
 );
 
 server.registerTool(
+  "search_by_property",
+  {
+    description:
+      "Find instances whose property equals a value, under a path (default the whole game), optionally filtered by className. The value is a primitive (string, number, or boolean); datatype properties are matched by their string form. Read-only.",
+    inputSchema: {
+      property: z.string(),
+      value: z.union([z.string(), z.number(), z.boolean()]),
+      path: z.string().optional(),
+      className: z.string().optional(),
+      limit: z.number().int().min(1).optional(),
+    },
+  },
+  async (args) => asText(await bridge.send("search_by_property", args)),
+);
+
+server.registerTool(
   "get_script_source",
   {
     description: "Read the source of a Script, LocalScript, or ModuleScript at the given path. Read-only.",

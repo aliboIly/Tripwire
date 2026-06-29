@@ -129,5 +129,36 @@ export function handleRead(cmd: BridgeCommand): CommandResult | undefined {
 		return { ok: true, data: { matches, truncated: matches.size() >= limit } };
 	}
 
+	if (cmd.type === "search_by_property") {
+		const p = cmd.payload as {
+			property: string;
+			value: string | number | boolean;
+			path?: string;
+			className?: string;
+			limit?: number;
+		};
+		const root = resolveInstance(p.path);
+		if (root === undefined) return notFound(p.path);
+		const limit = clampMatchLimit(p.limit);
+		const matches: Array<{ name: string; className: string; path: string; value: string }> = [];
+		for (const descendant of root.GetDescendants()) {
+			if (matches.size() >= limit) break;
+			if (p.className !== undefined && descendant.ClassName !== p.className) continue;
+			// Reading an arbitrary property by name can error on some instances, so pcall.
+			const [ok, readValue] = pcall(() => (descendant as unknown as Record<string, unknown>)[p.property]);
+			if (!ok) continue;
+			// Match a primitive directly, or a datatype property by its string form.
+			if (readValue === p.value || tostring(readValue) === tostring(p.value)) {
+				matches.push({
+					name: descendant.Name,
+					className: descendant.ClassName,
+					path: descendant.GetFullName(),
+					value: tostring(readValue),
+				});
+			}
+		}
+		return { ok: true, data: { matches, truncated: matches.size() >= limit } };
+	}
+
 	return undefined;
 }
