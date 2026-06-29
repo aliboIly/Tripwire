@@ -162,6 +162,69 @@ server.registerTool(
   async () => asText(await bridge.send("get_selection", {})),
 );
 
+// A property value is a tagged union so its Roblox datatype is explicit. The
+// plugin reconstructs the real datatype from this before assigning.
+const wireValue = z.union([
+  z.object({ type: z.literal("primitive"), value: z.union([z.string(), z.number(), z.boolean()]) }),
+  z.object({ type: z.literal("Vector3"), value: z.tuple([z.number(), z.number(), z.number()]) }),
+  z.object({
+    type: z.literal("Color3"),
+    value: z.tuple([z.number(), z.number(), z.number()]),
+    rgb255: z.boolean().optional(),
+  }),
+  z.object({ type: z.literal("UDim2"), value: z.tuple([z.number(), z.number(), z.number(), z.number()]) }),
+  z.object({
+    type: z.literal("CFrame"),
+    value: z.array(z.number()).refine((a) => a.length === 3 || a.length === 12, "CFrame needs 3 or 12 numbers"),
+  }),
+  z.object({ type: z.literal("EnumItem"), enum: z.string(), item: z.string() }),
+  z.object({ type: z.literal("instance"), path: z.string() }),
+]);
+
+server.registerTool(
+  "create_instance",
+  {
+    description:
+      "Create an instance of a class under a parent path (default the whole game), with an optional name and initial properties. One undo step. Returns the new instance's path.",
+    inputSchema: {
+      className: z.string(),
+      parentPath: z.string().optional(),
+      name: z.string().optional(),
+      properties: z.array(z.object({ name: z.string(), value: wireValue })).optional(),
+    },
+  },
+  async (args) => asText(await bridge.send("create_instance", args)),
+);
+
+server.registerTool(
+  "delete_instance",
+  {
+    description: "Destroy the instance at the given path and its descendants. One undo step. Refuses to destroy the data model.",
+    inputSchema: { path: z.string() },
+  },
+  async ({ path }) => asText(await bridge.send("delete_instance", { path })),
+);
+
+server.registerTool(
+  "set_property",
+  {
+    description:
+      "Set one property on the instance at the given path. The value is a typed datatype (primitive, Vector3, Color3, UDim2, CFrame, EnumItem, or an instance path). One undo step.",
+    inputSchema: { path: z.string(), name: z.string(), value: wireValue },
+  },
+  async (args) => asText(await bridge.send("set_property", args)),
+);
+
+server.registerTool(
+  "update_script_source",
+  {
+    description:
+      "Replace the source of a Script, LocalScript, or ModuleScript at the given path, via the script editor (the supported write path). Reading source uses get_script_source.",
+    inputSchema: { path: z.string(), source: z.string() },
+  },
+  async (args) => asText(await bridge.send("update_script_source", args)),
+);
+
 // The security tools run a local static analysis over a Rojo source tree. They
 // need no Studio session or Open Cloud key. The default target assumes the server
 // runs from the repo root.

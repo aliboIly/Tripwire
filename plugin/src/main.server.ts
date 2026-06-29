@@ -5,6 +5,7 @@
 
 import { HttpService } from "@rbxts/services";
 import { BridgeCommand, CommandResult, PROTOCOL_VERSION } from "protocol";
+import { handleEdit } from "edit";
 import { handleRead } from "read";
 import { handleScripts } from "scripts";
 import { handleStudio } from "studio";
@@ -31,7 +32,7 @@ function dispatch(cmd: BridgeCommand): CommandResult {
 	if (cmd.type === "ping") {
 		return { ok: true, data: { place: game.Name, payload: cmd.payload } };
 	}
-	const handled = handleRead(cmd) ?? handleScripts(cmd) ?? handleStudio(cmd);
+	const handled = handleRead(cmd) ?? handleScripts(cmd) ?? handleStudio(cmd) ?? handleEdit(cmd);
 	if (handled !== undefined) return handled;
 	return { ok: false, error: `unknown command: ${cmd.type}` };
 }
