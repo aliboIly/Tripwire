@@ -8,6 +8,13 @@ Scope is honest about its edges. Stopping an F5 playtest is best effort, in-play
 over an injected runner bridge, and headless tests cover server and gameplay logic rather than
 client input. None of those are bugs to chase; they fall out of how Studio works.
 
+## Install the plugin
+
+Download the latest `Tripwire.rbxmx` from the Releases page and drop it into your Studio
+plugins folder, or build it from source with `Docs/Dev/SETUP.md`. CI builds the server and the
+plugin on every pull request, and pushing a `vX.Y.Z` tag publishes a release with the `.rbxmx`
+attached.
+
 ## Read first
 
 `Docs/Dev/SETUP.md` has every command to install, build, and run.

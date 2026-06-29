@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - name: Install Rokit
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/rojo-rbx/rokit/main/scripts/install.sh | bash
+          echo "$HOME/.rokit/bin" >> "$GITHUB_PATH"
+      - name: Install pinned tools (rojo, lune)
+        run: rokit install --no-trust-check
+
+      - name: Build plugin
+        working-directory: plugin
+        run: |
+          npm ci
+          npx rbxtsc
+          rojo build --output Tripwire.rbxmx
+
+      - name: Build server
+        working-directory: server
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package server
+        run: tar -czf "tripwire-server-${{ github.ref_name }}.tar.gz" -C server dist package.json package-lock.json
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "${{ github.ref_name }}" in
+            v0.*|*-*) prerelease="--prerelease" ;;
+          esac
+          gh release create "${{ github.ref_name }}" \
+            plugin/Tripwire.rbxmx \
+            "tripwire-server-${{ github.ref_name }}.tar.gz" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            $prerelease
