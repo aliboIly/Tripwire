@@ -124,24 +124,68 @@ Allow HTTP Requests**. The Output shows `[Tripwire v...] connected`.
 </details>
 
 <details>
-<summary><b>Open Cloud key (only for headless tests, assets, and Open Cloud tools)</b></summary>
+<summary><b>Open Cloud key (for headless tests, assets, and Open Cloud tools)</b></summary>
 
-The Studio tools need nothing. For `run_luau`, the headless tests, `upload_asset`, `publish_place`,
-and the DataStore/Messaging/etc. tools, create an Open Cloud API key
-([create.roblox.com/dashboard/credentials](https://create.roblox.com/dashboard/credentials)) with the
-scopes you need, then put the credentials in a `.env` at the repo root (auto-loaded) or in your
-client's `env` block:
-
-```bash
-ROBLOX_OPEN_CLOUD_KEY=your_key
-ROBLOX_UNIVERSE_ID=000000
-ROBLOX_PLACE_ID=000000
-ROBLOX_CREATOR_USER_ID=000000   # only for upload_asset
-```
-
-Each tool works when the key grants its scope and returns Roblox's own error otherwise.
+The Studio tools need no key. The Open Cloud tools do. See [Open Cloud setup](#open-cloud-setup)
+below for the full walkthrough.
 
 </details>
+
+---
+
+## Open Cloud setup
+
+Most of Tripwire needs no credentials. These tools do, because they call Roblox Open Cloud:
+`run_luau`, the headless tests (`run_tests`, `run_test_file`, `list_tests`), `upload_asset`,
+`publish_place`, and the DataStore, Ordered DataStore, MessagingService, Memory Store, platform,
+and engagement tools. They authenticate with a Roblox Open Cloud API key.
+
+> **Use at your own risk.** An Open Cloud key is a real credential with real power over your
+> experience. Depending on the scopes you grant it, it can read and overwrite your live DataStores,
+> publish new versions of your place, upload assets to your account, and message your servers. Treat
+> it like a password: grant only the scopes you actually use, restrict it to your own IP, never
+> commit it, and revoke it if it leaks. You are responsible for what you do with it. Tripwire is not
+> affiliated with or endorsed by Roblox.
+
+### 1. Create the key
+
+1. Go to [create.roblox.com/dashboard/credentials](https://create.roblox.com/dashboard/credentials) and sign in.
+2. Click **Create API Key** and name it (for example `Tripwire`).
+3. Under **Access Permissions**, add only the API systems for the tools you want, and grant each the operation it needs, scoped to your experience:
+   - **Luau Execution** (write): `run_luau` and the headless tests.
+   - **universe-places** (write): `publish_place`.
+   - **Assets** (read + write): `upload_asset`.
+   - **DataStores** and **Ordered DataStores**: the data-store tools.
+   - **Messaging Service** (publish) and **Memory Stores**: those tools.
+   - **User/Group/Inventory/Subscription/Notification**: the platform and engagement tools.
+4. Under **Security**, set **Accepted IP Addresses** to your machine's IP, or `0.0.0.0/0` to allow any (simplest for local use). Set an expiration if you want.
+5. Click **Save & Generate Key** and copy the key string. It is shown only once.
+
+### 2. Find your universe and place IDs
+
+In the Studio command bar (View, then Command Bar), run:
+
+```lua
+print("universe", game.GameId, "place", game.PlaceId)
+```
+
+`GameId` is your `ROBLOX_UNIVERSE_ID`; `PlaceId` is your `ROBLOX_PLACE_ID`. The place must be
+**published** to Roblox for Open Cloud to act on it.
+
+### 3. Give Tripwire the credentials
+
+Create a `.env` at the repo root. It is gitignored and the server loads it automatically:
+
+```bash
+ROBLOX_OPEN_CLOUD_KEY=paste_the_key_here
+ROBLOX_UNIVERSE_ID=000000
+ROBLOX_PLACE_ID=000000
+ROBLOX_CREATOR_USER_ID=000000   # only for upload_asset (your user id)
+```
+
+Or put the same variables in your MCP client's `env` block instead (those take precedence).
+Reconnect the MCP server after changing either. Each tool works when the key grants its scope and
+returns Roblox's own error if a scope is missing, so you can add scopes as you go.
 
 ---
 
