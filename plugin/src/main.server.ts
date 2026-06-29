@@ -1,71 +1,101 @@
-// Tripwire Studio plugin. Phase 0 handshake (roblox-ts).
+// Tripwire Studio plugin. Phase 0 handshake plus Phase 1 read commands (roblox-ts).
 //
-// This is the plugin's entry script. The plugin/ project is already scaffolded
-// (roblox-ts plugin template). Build it from plugin/ with:
-//   npm install && npx rbxtsc && rojo build --output Tripwire.rbxmx
-// (The old `rbxtsc init` scaffolder is gone; today you'd scaffold a fresh
-//  plugin project with `npm create roblox-ts@latest` and pick the plugin template.)
-//
-// It long-polls the local Tripwire bridge, executes commands against the place,
-// and posts results back. Authored in TypeScript (roblox-ts), like the rest of the plugin.
+// It long-polls the local Tripwire bridge, runs commands against the open place,
+// and posts results back. The plugin is authored in TypeScript, like the server.
 
 import { HttpService } from "@rbxts/services";
+import { BridgeCommand, CommandResult, PROTOCOL_VERSION } from "protocol";
+import { handleRead } from "read";
 
 const BRIDGE = "http://127.0.0.1:44331";
+const RECONNECT_WAIT_SECONDS = 3;
 
 const toolbar = plugin.CreateToolbar("Tripwire");
 const button = toolbar.CreateButton("Tripwire", "Connect to the Tripwire MCP bridge", "");
 let running = false;
 
 function post(path: string, body: object): void {
-	pcall(() => {
+	pcall(() =>
 		HttpService.RequestAsync({
 			Url: `${BRIDGE}${path}`,
 			Method: "POST",
 			Headers: { "Content-Type": "application/json" },
 			Body: HttpService.JSONEncode(body),
-		});
-	});
+		}),
+	);
 }
 
-interface BridgeCommand {
-	id: string;
-	type: string;
-	payload: unknown;
+function dispatch(cmd: BridgeCommand): CommandResult {
+	if (cmd.type === "ping") {
+		return { ok: true, data: { place: game.Name, payload: cmd.payload } };
+	}
+	const read = handleRead(cmd);
+	if (read !== undefined) return read;
+	return { ok: false, error: `unknown command: ${cmd.type}` };
 }
 
 function handle(cmd: BridgeCommand): void {
-	// Phase 0 implements only 'ping'. Later phases dispatch real tools here.
-	if (cmd.type === "ping") {
-		post("/result", { id: cmd.id, ok: true, data: { place: game.Name, payload: cmd.payload } });
-	} else {
-		post("/result", { id: cmd.id, ok: false, error: `unknown command: ${cmd.type}` });
+	const result = dispatch(cmd);
+	post("/result", { id: cmd.id, ok: result.ok, data: result.data, error: result.error });
+}
+
+// Announces the plugin and confirms the server speaks the same protocol version.
+// Returns false (with a clear warning) on an unreachable bridge or a mismatch.
+function connect(): boolean {
+	try {
+		const res = HttpService.RequestAsync({
+			Url: `${BRIDGE}/hello`,
+			Method: "POST",
+			Headers: { "Content-Type": "application/json" },
+			Body: HttpService.JSONEncode({ protocolVersion: PROTOCOL_VERSION, placeName: game.Name }),
+		});
+		// The server returns JSON on both success and a version mismatch (HTTP 409),
+		// so read the error message out of the body rather than the raw status.
+		const body = res.Body !== "" ? (HttpService.JSONDecode(res.Body) as { ok?: boolean; error?: string }) : {};
+		if (res.Success && body.ok === true) return true;
+		warn(`[Tripwire] handshake failed: ${body.error ?? `HTTP ${res.StatusCode}`}`);
+		return false;
+	} catch (err) {
+		warn(`[Tripwire] cannot reach the bridge: ${err}. Is the server running and Allow HTTP Requests on?`);
+		return false;
 	}
 }
 
 function loop(): void {
 	while (running) {
-		const [ok, err] = pcall(() => {
+		try {
 			const res = HttpService.RequestAsync({ Url: `${BRIDGE}/poll`, Method: "GET" });
-			if (res.Success && res.StatusCode === 200 && res.Body !== "") {
-				handle(HttpService.JSONDecode(res.Body) as BridgeCommand);
+			if (res.Success) {
+				// 200 with a body is a command; 204 means the long-poll window elapsed
+				// with nothing queued, so poll again right away.
+				if (res.StatusCode === 200 && res.Body !== "") {
+					handle(HttpService.JSONDecode(res.Body) as BridgeCommand);
+				}
+			} else {
+				// Back off on an unexpected status so a broken endpoint cannot busy-spin.
+				warn(`[Tripwire] poll returned HTTP ${res.StatusCode}; retrying.`);
+				task.wait(RECONNECT_WAIT_SECONDS);
 			}
-		});
-		if (!ok) {
-			warn(`[Tripwire] bridge unreachable: ${err}. Is the server running and HTTP requests allowed?`);
-			task.wait(3);
+		} catch (err) {
+			warn(`[Tripwire] bridge unreachable: ${err}. Retrying.`);
+			task.wait(RECONNECT_WAIT_SECONDS);
 		}
 	}
 }
 
 button.Click.Connect(() => {
-	running = !running;
-	button.SetActive(running);
 	if (running) {
-		post("/hello", { placeName: game.Name });
-		print("[Tripwire] connected");
-		task.spawn(loop);
-	} else {
+		running = false;
+		button.SetActive(false);
 		print("[Tripwire] disconnected");
+		return;
 	}
+	if (!connect()) {
+		button.SetActive(false);
+		return;
+	}
+	running = true;
+	button.SetActive(true);
+	print("[Tripwire] connected");
+	task.spawn(loop);
 });

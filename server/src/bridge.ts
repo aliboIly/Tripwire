@@ -1,6 +1,11 @@
 import http from "node:http";
 import { randomUUID } from "node:crypto";
 
+// Wire-contract version. The plugin sends its own version on /hello; a mismatch
+// is rejected loudly so a stale plugin fails clearly instead of dropping fields.
+// Bump this on both sides whenever a command or result shape changes.
+export const PROTOCOL_VERSION = 1;
+
 export interface Command {
   id: string;
   type: string;
@@ -33,6 +38,7 @@ export class Bridge {
   private waiters: Array<(c: Command | null) => void> = [];
   connected = false;
   placeName = "(unknown)";
+  lastError?: string;
 
   send(type: string, payload: unknown, timeoutMs = 30000): Promise<BridgeResult> {
     const id = randomUUID();
@@ -40,6 +46,9 @@ export class Bridge {
     return new Promise<BridgeResult>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
+        // Drop it from the queue too, so a command the caller gave up on cannot be
+        // delivered and run later. Harmless for reads, but it matters once writes exist.
+        this.queue = this.queue.filter((c) => c.id !== id);
         reject(
           new Error(
             `Tripwire bridge: command '${type}' timed out after ${timeoutMs}ms. ` +
@@ -59,9 +68,17 @@ export class Bridge {
       const url = req.url ?? "/";
       if (req.method === "POST" && url === "/hello") {
         return this.readBody(req, (b) => {
-          const info = safeJson(b) as { placeName?: string } | null;
+          const info = safeJson(b) as { placeName?: string; protocolVersion?: number } | null;
+          if (info?.protocolVersion !== PROTOCOL_VERSION) {
+            this.connected = false;
+            this.lastError =
+              `protocol mismatch: plugin sent ${info?.protocolVersion ?? "none"}, ` +
+              `server speaks ${PROTOCOL_VERSION}. Rebuild and reinstall the plugin.`;
+            return json(res, 409, { ok: false, error: this.lastError });
+          }
           this.connected = true;
-          if (info?.placeName) this.placeName = info.placeName;
+          this.lastError = undefined;
+          if (info.placeName) this.placeName = info.placeName;
           json(res, 200, { ok: true });
         });
       }

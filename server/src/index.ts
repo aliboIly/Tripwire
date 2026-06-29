@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { Bridge } from "./bridge.js";
+import { Bridge, BridgeResult } from "./bridge.js";
 import { runLuau } from "./cloud.js";
 
 // This process speaks MCP over stdout. Never console.log to stdout, since it
@@ -17,6 +17,13 @@ bridge.start(BRIDGE_PORT);
 
 const server = new McpServer({ name: "tripwire", version: "0.0.1" });
 
+// Bridge results carry arbitrary tool data; render it as pretty JSON for the
+// model, or surface the error text when the plugin reported a failure.
+function asText(r: BridgeResult): { content: Array<{ type: "text"; text: string }> } {
+  const text = r.ok ? JSON.stringify(r.data, undefined, 2) : `Error: ${r.error}`;
+  return { content: [{ type: "text", text }] };
+}
+
 server.registerTool(
   "studio_status",
   {
@@ -29,7 +36,9 @@ server.registerTool(
         type: "text",
         text: bridge.connected
           ? `Connected. Place: ${bridge.placeName}`
-          : 'Plugin not connected. Open Studio, install the Tripwire plugin, click its toolbar button, and enable "Allow HTTP Requests".',
+          : bridge.lastError
+            ? `Not connected: ${bridge.lastError}`
+            : 'Plugin not connected. Open Studio, install the Tripwire plugin, click its toolbar button, and enable "Allow HTTP Requests".',
       },
     ],
   }),
@@ -68,6 +77,36 @@ server.registerTool(
     if (r.logs.length > 0) lines.push("logs:", ...r.logs);
     return { content: [{ type: "text", text: lines.join("\n") }] };
   },
+);
+
+server.registerTool(
+  "get_file_tree",
+  {
+    description:
+      "List the instance tree of the open place from a path (default the whole game), bounded by depth. Read-only. Path is dot-separated from the data model root, e.g. 'Workspace.Folder'.",
+    inputSchema: { path: z.string().optional(), maxDepth: z.number().int().min(0).optional() },
+  },
+  async ({ path, maxDepth }) => asText(await bridge.send("get_file_tree", { path, maxDepth })),
+);
+
+server.registerTool(
+  "get_instance_children",
+  {
+    description:
+      "List the direct children (name and className) of the instance at the given path (default the whole game). Read-only.",
+    inputSchema: { path: z.string().optional() },
+  },
+  async ({ path }) => asText(await bridge.send("get_instance_children", { path })),
+);
+
+server.registerTool(
+  "get_instance_properties",
+  {
+    description:
+      "Read an instance's name, className, full data-model path, and attributes at the given path. Read-only.",
+    inputSchema: { path: z.string().optional() },
+  },
+  async ({ path }) => asText(await bridge.send("get_instance_properties", { path })),
 );
 
 const transport = new StdioServerTransport();
