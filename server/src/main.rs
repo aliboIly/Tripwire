@@ -59,6 +59,16 @@ fn oc_text(result: Result<Value, String>) -> CallToolResult {
     }
 }
 
+// A free-form JSON field. serde_json::Value derives a bare `true` schema, which some
+// MCP clients reject when they validate a tool's input schema; emit an explicit
+// permissive schema for those fields instead.
+fn any_json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    serde_json::from_value(serde_json::json!({
+        "type": ["object", "array", "string", "number", "boolean", "null"]
+    }))
+    .expect("static schema is valid")
+}
+
 // ===== tool input shapes (camelCase on the wire; absent optionals are omitted) =====
 
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
@@ -113,6 +123,7 @@ struct SearchObjectsArgs {
 struct SearchByPropertyArgs {
     property: String,
     /// A primitive value (string, number, or boolean).
+    #[schemars(schema_with = "any_json_schema")]
     value: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     class_name: Option<String>,
@@ -149,6 +160,7 @@ struct CreateInstanceArgs {
     name: Option<String>,
     /// Initial properties: a list of { name, value } where value is a typed datatype.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "any_json_schema")]
     properties: Option<Value>,
 }
 
@@ -158,6 +170,7 @@ struct SetPropertyArgs {
     path: String,
     name: String,
     /// A typed datatype (primitive, Vector3, Color3, UDim2, CFrame, EnumItem, or an instance path).
+    #[schemars(schema_with = "any_json_schema")]
     value: Value,
 }
 
@@ -182,6 +195,7 @@ struct InsertModelArgs {
     unpack: Option<bool>,
     /// A CFrame datatype to reposition the model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "any_json_schema")]
     pivot_to: Option<Value>,
 }
 
@@ -189,6 +203,7 @@ struct InsertModelArgs {
 #[serde(rename_all = "camelCase")]
 struct MassCreateArgs {
     /// A list of create specs ({ className, parentPath?, name?, properties? }).
+    #[schemars(schema_with = "any_json_schema")]
     items: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     atomic: Option<bool>,
@@ -198,6 +213,7 @@ struct MassCreateArgs {
 #[serde(rename_all = "camelCase")]
 struct MassSetArgs {
     /// A list of { path, name, value } specs.
+    #[schemars(schema_with = "any_json_schema")]
     items: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     atomic: Option<bool>,
@@ -312,10 +328,12 @@ struct DsEntryArgs {
 struct DsSetArgs {
     datastore: String,
     entry: String,
+    #[schemars(schema_with = "any_json_schema")]
     value: Value,
     #[serde(default)]
     users: Option<Vec<String>>,
     #[serde(default)]
+    #[schemars(schema_with = "any_json_schema")]
     attributes: Option<Value>,
 }
 
@@ -327,6 +345,7 @@ struct DsIncrementArgs {
     #[serde(default)]
     users: Option<Vec<String>>,
     #[serde(default)]
+    #[schemars(schema_with = "any_json_schema")]
     attributes: Option<Value>,
 }
 
@@ -383,6 +402,7 @@ struct PublishMessageArgs {
 struct SortedMapSetArgs {
     map: String,
     item: String,
+    #[schemars(schema_with = "any_json_schema")]
     value: Value,
     #[serde(default)]
     ttl_seconds: Option<i64>,
@@ -416,6 +436,7 @@ struct SortedMapListArgs {
 #[serde(rename_all = "camelCase")]
 struct QueueAddArgs {
     queue: String,
+    #[schemars(schema_with = "any_json_schema")]
     data: Value,
     #[serde(default)]
     priority: Option<f64>,
@@ -472,6 +493,7 @@ struct NotificationArgs {
     user_id: String,
     message_id: String,
     #[serde(default)]
+    #[schemars(schema_with = "any_json_schema")]
     parameters: Option<Value>,
     #[serde(default)]
     launch_data: Option<String>,
