@@ -1,6 +1,6 @@
 {
   "name": "tripwire",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Tripwire monorepo root. server/ is the Node TypeScript MCP server (built with tsc). plugin/ is the roblox-ts Studio plugin (built with rbxtsc). Each package builds with its own toolchain, so do not run rbxtsc at the root. This is intentionally not an npm-workspaces repo, which keeps the plugin's @rbxts deps local for the node_modules/@rbxts path that Rojo references.",
   "scripts": {

@@ -1,6 +1,6 @@
 {
   "name": "tripwire-plugin",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Tripwire Studio plugin (roblox-ts, compiled to Luau). Long-polls the Tripwire MCP bridge and runs data-model and playtest actions. Distributed as a .rbxmx rather than via npm.",
   "scripts": {

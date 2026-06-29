@@ -9,7 +9,7 @@
 // is no programmatic F5, and start returns a result telling the human to press
 // Play (the injected runner still attaches once the test runs).
 
-import { BridgeCommand, CommandResult } from "protocol";
+import { BridgeCommand, CommandResult, TRIPWIRE_VERSION } from "protocol";
 import { INSTANCE_ID } from "identity";
 
 const ServerScriptService = game.GetService("ServerScriptService");
@@ -59,9 +59,11 @@ function injectRunner(source: string, runContext: Enum.RunContext, parent: Insta
 function startSession(source: string, mode: "play" | "run"): CommandResult {
 	removeRunners(); // clear any leftovers from a previous crashed session
 
-	// Fill in our instanceId so the injected peers attach to this Studio. The server
-	// templated the port and version; the instanceId is known only here.
-	const [filled] = source.gsub("{{INSTANCE_ID}}", INSTANCE_ID);
+	// Fill in our instanceId so the injected peers attach to this Studio, and the
+	// build version for the runner's log prefix. The server templated the port and
+	// protocol version; these two are known only here.
+	const [withId] = source.gsub("{{INSTANCE_ID}}", INSTANCE_ID);
+	const [filled] = withId.gsub("{{VERSION}}", TRIPWIRE_VERSION);
 	injectRunner(filled, Enum.RunContext.Server, ServerScriptService);
 	if (mode === "play") {
 		const clientContainer = clientScriptsContainer();

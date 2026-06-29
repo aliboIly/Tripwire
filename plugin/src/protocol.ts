@@ -7,6 +7,11 @@
 
 export const PROTOCOL_VERSION = 2;
 
+// Human-facing build version, shown in the Studio Output log prefix so you can tell
+// at a glance which plugin build is loaded. Separate from PROTOCOL_VERSION (the wire
+// contract). The runner gets this value templated in by the plugin.
+export const TRIPWIRE_VERSION = "0.1.0";
+
 export interface BridgeCommand {
 	id: string;
 	type: string;

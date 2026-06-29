@@ -8,8 +8,7 @@
 -- with the bridge under that role, long-polls for in-play commands, runs them
 -- inside the live game, and posts results back.
 --
--- This file is a TEMPLATE: the server fills in the {{PORT}} and
--- {{PROTOCOL_VERSION}} tokens before injection, so it is not valid Luau on disk.
+-- This file is a TEMPLATE: the server fills in the {{PORT}}, {{PROTOCOL_VERSION}}, {{INSTANCE_ID}}, and {{VERSION}} tokens before injection, so it is not valid Luau on disk.
 
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
@@ -21,6 +20,7 @@ local BRIDGE = "http://127.0.0.1:{{PORT}}"
 local PROTOCOL_VERSION = {{PROTOCOL_VERSION}}
 local INSTANCE_ID = "{{INSTANCE_ID}}"
 local ROLE = RunService:IsServer() and "server" or "client"
+local LOG = "[Tripwire runner v{{VERSION}}]"
 
 local function post(path, body)
 	pcall(function()
@@ -38,7 +38,7 @@ local function reply(cmd, ok, dataOrError)
 		post("/result", { id = cmd.id, ok = true, data = dataOrError })
 	else
 		-- Surface in-play failures in the Studio Output too, not just over the bridge.
-		warn("[Tripwire runner] " .. tostring(cmd.type) .. ": " .. tostring(dataOrError))
+		warn(LOG .. " " .. tostring(cmd.type) .. ": " .. tostring(dataOrError))
 		post("/result", { id = cmd.id, ok = false, error = dataOrError })
 	end
 end
@@ -186,11 +186,11 @@ local function announce()
 		})
 	end)
 	if not ok then
-		warn("[Tripwire runner] cannot reach the bridge. Is Allow HTTP Requests enabled in Game Settings?")
+		warn(LOG .. " cannot reach the bridge. Is Allow HTTP Requests enabled in Game Settings?")
 		return false
 	end
 	if not res.Success then
-		warn("[Tripwire runner] bridge refused the handshake: " .. tostring(res.Body))
+		warn(LOG .. " bridge refused the handshake: " .. tostring(res.Body))
 		return false
 	end
 	return true
@@ -219,7 +219,7 @@ local function run()
 			-- cannot busy-spin.
 			task.wait(2)
 		else
-			warn("[Tripwire runner] bridge unreachable; retrying.")
+			warn(LOG .. " bridge unreachable; retrying.")
 			task.wait(2)
 		end
 	end

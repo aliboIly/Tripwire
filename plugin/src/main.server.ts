@@ -4,7 +4,7 @@
 // and posts results back. The plugin is authored in TypeScript, like the server.
 
 import { HttpService } from "@rbxts/services";
-import { BridgeCommand, CommandResult, PROTOCOL_VERSION } from "protocol";
+import { BridgeCommand, CommandResult, PROTOCOL_VERSION, TRIPWIRE_VERSION } from "protocol";
 import { INSTANCE_ID, installId } from "identity";
 import { handleEdit } from "edit";
 import { handlePlaytest, sweepRunners } from "playtest";
@@ -14,6 +14,7 @@ import { handleStudio } from "studio";
 
 const BRIDGE = "http://127.0.0.1:44331";
 const RECONNECT_WAIT_SECONDS = 3;
+const LOG = `[Tripwire v${TRIPWIRE_VERSION}]`;
 
 const toolbar = plugin.CreateToolbar("Tripwire");
 const button = toolbar.CreateButton("Tripwire", "Connect to the Tripwire MCP bridge", "");
@@ -45,7 +46,7 @@ function handle(cmd: BridgeCommand): void {
 	// than killing the poll loop, and print any failure to the Studio Output.
 	const [ok, result] = pcall(() => dispatch(cmd));
 	const finished: CommandResult = ok ? (result as CommandResult) : { ok: false, error: `${result}` };
-	if (!finished.ok) warn(`[Tripwire] ${cmd.type} failed: ${finished.error}`);
+	if (!finished.ok) warn(`${LOG} ${cmd.type} failed: ${finished.error}`);
 	post("/result", { id: cmd.id, ok: finished.ok, data: finished.data, error: finished.error });
 }
 
@@ -73,10 +74,10 @@ function announce(): boolean {
 		// so read the error message out of the body rather than the raw status.
 		const body = res.Body !== "" ? (HttpService.JSONDecode(res.Body) as { ok?: boolean; error?: string }) : {};
 		if (res.Success && body.ok === true) return true;
-		warn(`[Tripwire] handshake failed: ${body.error ?? `HTTP ${res.StatusCode}`}`);
+		warn(`${LOG} handshake failed: ${body.error ?? `HTTP ${res.StatusCode}`}`);
 		return false;
 	} catch (err) {
-		warn(`[Tripwire] cannot reach the bridge: ${err}. Is the server running and Allow HTTP Requests on?`);
+		warn(`${LOG} cannot reach the bridge: ${err}. Is the server running and Allow HTTP Requests on?`);
 		return false;
 	}
 }
@@ -99,11 +100,11 @@ function loop(): void {
 				}
 			} else {
 				// Back off on an unexpected status so a broken endpoint cannot busy-spin.
-				warn(`[Tripwire] poll returned HTTP ${res.StatusCode}; retrying.`);
+				warn(`${LOG} poll returned HTTP ${res.StatusCode}; retrying.`);
 				task.wait(RECONNECT_WAIT_SECONDS);
 			}
 		} catch (err) {
-			warn(`[Tripwire] bridge unreachable: ${err}. Retrying.`);
+			warn(`${LOG} bridge unreachable: ${err}. Retrying.`);
 			task.wait(RECONNECT_WAIT_SECONDS);
 		}
 	}
@@ -113,7 +114,7 @@ button.Click.Connect(() => {
 	if (running) {
 		running = false;
 		button.SetActive(false);
-		print("[Tripwire] disconnected");
+		print(`${LOG} disconnected`);
 		return;
 	}
 	if (!announce()) {
@@ -123,6 +124,6 @@ button.Click.Connect(() => {
 	sweepRunners(); // clear any runner scripts left behind by a crashed session
 	running = true;
 	button.SetActive(true);
-	print("[Tripwire] connected");
+	print(`${LOG} connected`);
 	task.spawn(loop);
 });
