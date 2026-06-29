@@ -267,6 +267,53 @@ server.registerTool(
   async (args) => asText(await bridge.send("update_script_source", args)),
 );
 
+const createItem = z.object({
+  className: z.string(),
+  parentPath: z.string().optional(),
+  name: z.string().optional(),
+  properties: z.array(z.object({ name: z.string(), value: wireValue })).optional(),
+});
+
+server.registerTool(
+  "insert_model",
+  {
+    description:
+      "Insert an asset by id under a parent path (default Workspace). method 'load_asset' (default) loads creator-owned or Roblox assets; 'load_asset_async' can load public free Creator Store models, but the place must enable Game Settings > Security > Allow Loading Third Party Assets and such assets' scripts are sandboxed. Optional name, pivotTo (a CFrame to reposition), and unpack (reparent the wrapper's children, then remove it). One undo step.",
+    inputSchema: {
+      assetId: z.number().int(),
+      parentPath: z.string().optional(),
+      method: z.enum(["load_asset", "load_asset_async"]).optional(),
+      name: z.string().optional(),
+      unpack: z.boolean().optional(),
+      pivotTo: wireValue.optional(),
+    },
+  },
+  async (args) => asText(await bridge.send("insert_model", args, "plugin", 60000)),
+);
+
+server.registerTool(
+  "mass_create",
+  {
+    description:
+      "Create many instances in one undo step. atomic:true rolls all back if any item fails; otherwise it is best-effort and returns per-item successes and failures.",
+    inputSchema: { items: z.array(createItem), atomic: z.boolean().optional() },
+  },
+  async (args) => asText(await bridge.send("mass_create", args, "plugin", 60000)),
+);
+
+server.registerTool(
+  "mass_set_property",
+  {
+    description:
+      "Set one property on each of many instances in one undo step. atomic:true rolls all back if any item fails; otherwise best-effort with per-item results.",
+    inputSchema: {
+      items: z.array(z.object({ path: z.string(), name: z.string(), value: wireValue })),
+      atomic: z.boolean().optional(),
+    },
+  },
+  async (args) => asText(await bridge.send("mass_set_property", args, "plugin", 60000)),
+);
+
 server.registerTool(
   "start_playtest",
   {

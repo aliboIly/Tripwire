@@ -14,6 +14,8 @@ import { resolveInstance } from "read";
 // through GetService.
 const ChangeHistoryService = game.GetService("ChangeHistoryService");
 const ScriptEditorService = game.GetService("ScriptEditorService");
+const InsertService = game.GetService("InsertService");
+const AssetService = game.GetService("AssetService");
 
 // A property value on the wire is a tagged union, so the type is explicit rather
 // than guessed from the property name (a 3-number array is ambiguous between
@@ -159,6 +161,143 @@ function updateScriptSource(p: { path?: string; source: string }): CommandResult
 	return { ok: true, data: { path: target.GetFullName() } };
 }
 
+interface InsertModelPayload {
+	assetId: number;
+	parentPath?: string;
+	method?: "load_asset" | "load_asset_async";
+	pivotTo?: WireValue;
+	name?: string;
+	unpack?: boolean;
+}
+
+// LoadAsset only loads creator-owned/Roblox assets; LoadAssetAsync can load public
+// free models but the place must allow third-party assets (surfaced in the tool
+// description). Both yield and are pcall'd. The result is a Model wrapper, parented
+// last, then optionally repositioned or unpacked.
+function insertModel(p: InsertModelPayload): CommandResult {
+	const parent = resolveInstance(p.parentPath ?? "Workspace");
+	if (parent === undefined) return notFound(p.parentPath ?? "Workspace");
+
+	let loaded: Instance | undefined;
+	const [ok, err] = pcall(() => {
+		loaded =
+			p.method === "load_asset_async"
+				? (AssetService as unknown as { LoadAssetAsync(this: unknown, id: number): Instance }).LoadAssetAsync(
+						p.assetId,
+					)
+				: InsertService.LoadAsset(p.assetId);
+	});
+	if (!ok) return { ok: false, error: `insert_model failed: ${err}` };
+	if (loaded === undefined) return { ok: false, error: `insert_model: the loader returned no asset for id ${p.assetId}` };
+
+	const model = loaded;
+	if (p.name !== undefined) model.Name = p.name;
+	model.Parent = parent;
+	let pivotError: string | undefined;
+	if (p.pivotTo !== undefined) {
+		const [pivotOk, pivotErr] = pcall(() =>
+			(model as unknown as { PivotTo(cf: unknown): void }).PivotTo(convert(p.pivotTo as WireValue)),
+		);
+		if (!pivotOk) pivotError = `${pivotErr}`;
+	}
+	if (p.unpack === true) {
+		const insertedPaths: string[] = [];
+		for (const child of model.GetChildren()) {
+			child.Parent = parent;
+			insertedPaths.push(child.GetFullName());
+		}
+		model.Destroy();
+		return { ok: true, data: { unpacked: true, insertedPaths, pivotError } };
+	}
+	return {
+		ok: true,
+		data: {
+			path: model.GetFullName(),
+			className: model.ClassName,
+			childCount: model.GetChildren().size(),
+			pivotError,
+		},
+	};
+}
+
+interface BatchFailure {
+	index: number;
+	target: string;
+	reason: string;
+}
+
+// Runs a batch of mutations under one undo recording. Best-effort by default
+// (successful items persist as a single undo step); atomic rolls the whole batch
+// back if any item fails. This does not use asUndoStep, which begins its own
+// recording and would nest.
+function runBatch(
+	displayName: string,
+	atomic: boolean,
+	body: () => { succeeded: defined[]; failed: BatchFailure[] },
+): CommandResult {
+	const recording = ChangeHistoryService.TryBeginRecording(`tripwire_${displayName}`, displayName);
+	// Atomic mode needs a recording to roll back. If one is unavailable, fail before
+	// mutating rather than running the batch and falsely reporting a rollback.
+	if (atomic && recording === undefined) {
+		return {
+			ok: false,
+			error: `${displayName}: cannot run atomically because an undo recording is unavailable (another recording is active or history is disabled)`,
+		};
+	}
+	const [ok, out] = pcall(body);
+	if (!ok) {
+		if (recording !== undefined) ChangeHistoryService.FinishRecording(recording, Enum.FinishRecordingOperation.Cancel);
+		return { ok: false, error: `${displayName} failed: ${out}` };
+	}
+	const result = out as { succeeded: defined[]; failed: BatchFailure[] };
+	const rollBack = atomic && result.failed.size() > 0;
+	if (recording !== undefined) {
+		ChangeHistoryService.FinishRecording(
+			recording,
+			rollBack ? Enum.FinishRecordingOperation.Cancel : Enum.FinishRecordingOperation.Commit,
+		);
+	}
+	return {
+		ok: !rollBack,
+		data: {
+			committed: recording !== undefined && !rollBack,
+			total: result.succeeded.size() + result.failed.size(),
+			succeeded: result.succeeded,
+			failed: result.failed,
+		},
+		error: rollBack ? `atomic batch rolled back: ${result.failed.size()} item(s) failed` : undefined,
+	};
+}
+
+function massCreate(p: { items: CreatePayload[]; atomic?: boolean }): CommandResult {
+	return runBatch("mass_create", p.atomic === true, () => {
+		const succeeded: defined[] = [];
+		const failed: BatchFailure[] = [];
+		p.items.forEach((item, index) => {
+			const r = createInstance(item);
+			if (r.ok) succeeded.push(r.data as defined);
+			else failed.push({ index, target: item.className, reason: r.error ?? "unknown error" });
+		});
+		return { succeeded, failed };
+	});
+}
+
+function massSetProperty(p: {
+	items: Array<{ path?: string; name: string; value: WireValue }>;
+	atomic?: boolean;
+}): CommandResult {
+	return runBatch("mass_set_property", p.atomic === true, () => {
+		const succeeded: defined[] = [];
+		const failed: BatchFailure[] = [];
+		p.items.forEach((item, index) => {
+			const r = setProperty(item);
+			if (r.ok) succeeded.push(r.data as defined);
+			else failed.push({ index, target: item.path ?? "game", reason: r.error ?? "unknown error" });
+		});
+		return { succeeded, failed };
+	});
+}
+
 export function handleEdit(cmd: BridgeCommand): CommandResult | undefined {
 	if (cmd.type === "create_instance") {
 		return asUndoStep("create_instance", () => createInstance(cmd.payload as CreatePayload));
@@ -173,6 +312,17 @@ export function handleEdit(cmd: BridgeCommand): CommandResult | undefined {
 	// they are not wrapped in a ChangeHistoryService recording.
 	if (cmd.type === "update_script_source") {
 		return updateScriptSource(cmd.payload as { path?: string; source: string });
+	}
+	if (cmd.type === "insert_model") {
+		return asUndoStep("insert_model", () => insertModel(cmd.payload as InsertModelPayload));
+	}
+	if (cmd.type === "mass_create") {
+		return massCreate(cmd.payload as { items: CreatePayload[]; atomic?: boolean });
+	}
+	if (cmd.type === "mass_set_property") {
+		return massSetProperty(
+			cmd.payload as { items: Array<{ path?: string; name: string; value: WireValue }>; atomic?: boolean },
+		);
 	}
 	return undefined;
 }
