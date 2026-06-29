@@ -21,6 +21,18 @@ import {
   getPlaytestOutput,
 } from "./playtest.js";
 import { uploadAsset } from "./assets.js";
+import { config as loadEnv } from "dotenv";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Load secrets from a .env at the repo root if present, so the Open Cloud keys are
+// available whether the server runs manually or as an MCP server (the MCP launcher
+// does not source a shell profile). process.env still wins, so an MCP "env" block
+// overrides the file. Studio tools need no key; this is only for the Open Cloud
+// features (run_luau, the headless tests, upload_asset). Must run before any env
+// read below. quiet:true suppresses dotenv's banner, which would otherwise corrupt
+// the MCP stdout stream.
+loadEnv({ path: join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".env"), quiet: true });
 
 // This process speaks MCP over stdout. Never console.log to stdout, since it
 // corrupts the protocol stream. Diagnostics go to stderr.
