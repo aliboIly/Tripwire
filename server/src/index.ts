@@ -9,6 +9,7 @@ import {
   runTests as harnessRunTests,
   runTestFile,
   listTests as harnessListTests,
+  writeTest,
   formatHarness,
   formatTestList,
 } from "./harness.js";
@@ -121,6 +122,22 @@ server.registerTool(
     inputSchema: {},
   },
   async () => ({ content: [{ type: "text", text: formatTestList(await harnessListTests()) }] }),
+);
+
+server.registerTool(
+  "write_test",
+  {
+    description:
+      "Write a roblox-ts test spec to disk as <name>.spec.ts under a directory (default sample-game/src/shared). It does not run the test; rebuild (rbxtsc) and publish the place, then run_tests picks it up. There is no watch_tests: Open Cloud runs the published place, so the loop is edit, rebuild, publish, run_tests.",
+    inputSchema: { name: z.string(), source: z.string(), dir: z.string().optional() },
+  },
+  async ({ name, source, dir }) => {
+    const r = writeTest({ name, source, dir });
+    const text = r.ok
+      ? `Wrote ${r.path}. Rebuild (rbxtsc) and publish the place, then run_tests.`
+      : `Error: ${r.error}`;
+    return { content: [{ type: "text", text }] };
+  },
 );
 
 server.registerTool(

@@ -8,7 +8,12 @@
 // Running live needs the place published and the Open Cloud env set, so the
 // caller (a human or CI) publishes first. The agent cannot publish with the key.
 
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { LuauResult, runLuau } from "./cloud.js";
+
+const DEFAULT_TEST_DIR = "sample-game/src/shared";
+const TEST_NAME = /^[\w.\-]+$/;
 
 export interface TestFailure {
   name: string;
@@ -110,6 +115,27 @@ export function formatHarness(result: HarnessResult): string {
   const lines = [`Tests: ${s.passed} passed, ${s.failed} failed.`];
   for (const f of s.failures) lines.push(`  FAIL ${f.name}: ${f.message}`);
   return lines.join("\n");
+}
+
+// Writes a spec source file to disk (tests are roblox-ts source, git-native and
+// compiled into the place). It does not run anything; the place must be rebuilt
+// and published before run_tests picks the spec up.
+export function writeTest(input: { name: string; source: string; dir?: string }): {
+  ok: boolean;
+  path?: string;
+  error?: string;
+} {
+  if (!TEST_NAME.test(input.name)) return { ok: false, error: `invalid test name: ${input.name}` };
+  const dir = input.dir ?? DEFAULT_TEST_DIR;
+  const fileName = input.name.endsWith(".spec.ts") ? input.name : `${input.name}.spec.ts`;
+  const path = join(dir, fileName);
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path, input.source.endsWith("\n") ? input.source : `${input.source}\n`);
+    return { ok: true, path };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export function formatTestList(list: { ok: boolean; specs: TestCaseList[]; error?: string }): string {
