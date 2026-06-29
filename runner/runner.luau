@@ -19,6 +19,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local BRIDGE = "http://127.0.0.1:{{PORT}}"
 local PROTOCOL_VERSION = {{PROTOCOL_VERSION}}
+local INSTANCE_ID = "{{INSTANCE_ID}}"
 local ROLE = RunService:IsServer() and "server" or "client"
 
 local function post(path, body)
@@ -36,6 +37,8 @@ local function reply(cmd, ok, dataOrError)
 	if ok then
 		post("/result", { id = cmd.id, ok = true, data = dataOrError })
 	else
+		-- Surface in-play failures in the Studio Output too, not just over the bridge.
+		warn("[Tripwire runner] " .. tostring(cmd.type) .. ": " .. tostring(dataOrError))
 		post("/result", { id = cmd.id, ok = false, error = dataOrError })
 	end
 end
@@ -171,32 +174,44 @@ local function handle(cmd)
 	end
 end
 
-local function run()
-	local okHello, hello = pcall(function()
+-- Announce this peer (its role and the parent plugin's instanceId). Re-callable on
+-- a 205 poll after a server restart.
+local function announce()
+	local ok, res = pcall(function()
 		return HttpService:RequestAsync({
 			Url = BRIDGE .. "/hello",
 			Method = "POST",
 			Headers = { ["Content-Type"] = "application/json" },
-			Body = HttpService:JSONEncode({ protocolVersion = PROTOCOL_VERSION, role = ROLE }),
+			Body = HttpService:JSONEncode({ protocolVersion = PROTOCOL_VERSION, role = ROLE, instanceId = INSTANCE_ID }),
 		})
 	end)
-	if not okHello then
+	if not ok then
 		warn("[Tripwire runner] cannot reach the bridge. Is Allow HTTP Requests enabled in Game Settings?")
-		return
+		return false
 	end
-	if not hello.Success then
-		warn("[Tripwire runner] bridge refused the handshake: " .. tostring(hello.Body))
-		return
+	if not res.Success then
+		warn("[Tripwire runner] bridge refused the handshake: " .. tostring(res.Body))
+		return false
 	end
+	return true
+end
 
+local function run()
+	if not announce() then
+		return
+	end
 	while true do
 		local ok, res = pcall(function()
-			return HttpService:RequestAsync({ Url = BRIDGE .. "/poll?role=" .. ROLE, Method = "GET" })
+			return HttpService:RequestAsync({ Url = BRIDGE .. "/poll?studio=" .. INSTANCE_ID .. "&role=" .. ROLE, Method = "GET" })
 		end)
 		if ok and res.Success then
-			-- 200 with a body is a command; 204 means the long-poll window elapsed,
-			-- so poll again right away.
-			if res.StatusCode == 200 and res.Body ~= "" then
+			if res.StatusCode == 205 then
+				-- The server lost our registration (it restarted); re-announce.
+				if not announce() then
+					task.wait(2)
+				end
+			elseif res.StatusCode == 200 and res.Body ~= "" then
+				-- 204 means the long-poll window elapsed with nothing queued.
 				handle(HttpService:JSONDecode(res.Body))
 			end
 		elseif ok then

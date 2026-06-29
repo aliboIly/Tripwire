@@ -5,6 +5,7 @@
 
 import { HttpService } from "@rbxts/services";
 import { BridgeCommand, CommandResult, PROTOCOL_VERSION } from "protocol";
+import { INSTANCE_ID, installId } from "identity";
 import { handleEdit } from "edit";
 import { handlePlaytest, sweepRunners } from "playtest";
 import { handleRead } from "read";
@@ -40,19 +41,33 @@ function dispatch(cmd: BridgeCommand): CommandResult {
 }
 
 function handle(cmd: BridgeCommand): void {
-	const result = dispatch(cmd);
-	post("/result", { id: cmd.id, ok: result.ok, data: result.data, error: result.error });
+	// pcall the dispatch so a thrown handler error is caught and returned rather
+	// than killing the poll loop, and print any failure to the Studio Output.
+	const [ok, result] = pcall(() => dispatch(cmd));
+	const finished: CommandResult = ok ? (result as CommandResult) : { ok: false, error: `${result}` };
+	if (!finished.ok) warn(`[Tripwire] ${cmd.type} failed: ${finished.error}`);
+	post("/result", { id: cmd.id, ok: finished.ok, data: finished.data, error: finished.error });
 }
 
-// Announces the plugin and confirms the server speaks the same protocol version.
-// Returns false (with a clear warning) on an unreachable bridge or a mismatch.
-function connect(): boolean {
+// Announces this plugin (its session instanceId plus place metadata) and confirms
+// the server speaks the same protocol version. Re-callable: used on connect and
+// again when a poll returns 205 (the server lost our registration after a restart).
+// Returns false with a clear warning on an unreachable bridge or a version mismatch.
+function announce(): boolean {
 	try {
 		const res = HttpService.RequestAsync({
 			Url: `${BRIDGE}/hello`,
 			Method: "POST",
 			Headers: { "Content-Type": "application/json" },
-			Body: HttpService.JSONEncode({ protocolVersion: PROTOCOL_VERSION, role: "plugin", placeName: game.Name }),
+			Body: HttpService.JSONEncode({
+				protocolVersion: PROTOCOL_VERSION,
+				role: "plugin",
+				instanceId: INSTANCE_ID,
+				installId: installId(),
+				placeName: game.Name,
+				placeId: game.PlaceId,
+				userId: plugin.GetStudioUserId(),
+			}),
 		});
 		// The server returns JSON on both success and a version mismatch (HTTP 409),
 		// so read the error message out of the body rather than the raw status.
@@ -69,11 +84,17 @@ function connect(): boolean {
 function loop(): void {
 	while (running) {
 		try {
-			const res = HttpService.RequestAsync({ Url: `${BRIDGE}/poll?role=plugin`, Method: "GET" });
+			const res = HttpService.RequestAsync({
+				Url: `${BRIDGE}/poll?studio=${INSTANCE_ID}&role=plugin`,
+				Method: "GET",
+			});
 			if (res.Success) {
-				// 200 with a body is a command; 204 means the long-poll window elapsed
-				// with nothing queued, so poll again right away.
-				if (res.StatusCode === 200 && res.Body !== "") {
+				if (res.StatusCode === 205) {
+					// The server has no registration for us (it restarted). Re-announce;
+					// back off only if that fails, to avoid a re-hello storm on a mismatch.
+					if (!announce()) task.wait(RECONNECT_WAIT_SECONDS);
+				} else if (res.StatusCode === 200 && res.Body !== "") {
+					// 204 means the long-poll window elapsed with nothing queued.
 					handle(HttpService.JSONDecode(res.Body) as BridgeCommand);
 				}
 			} else {
@@ -95,7 +116,7 @@ button.Click.Connect(() => {
 		print("[Tripwire] disconnected");
 		return;
 	}
-	if (!connect()) {
+	if (!announce()) {
 		button.SetActive(false);
 		return;
 	}

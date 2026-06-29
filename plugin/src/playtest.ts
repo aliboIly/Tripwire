@@ -10,6 +10,7 @@
 // Play (the injected runner still attaches once the test runs).
 
 import { BridgeCommand, CommandResult } from "protocol";
+import { INSTANCE_ID } from "identity";
 
 const ServerScriptService = game.GetService("ServerScriptService");
 const StarterPlayer = game.GetService("StarterPlayer");
@@ -58,10 +59,13 @@ function injectRunner(source: string, runContext: Enum.RunContext, parent: Insta
 function startSession(source: string, mode: "play" | "run"): CommandResult {
 	removeRunners(); // clear any leftovers from a previous crashed session
 
-	injectRunner(source, Enum.RunContext.Server, ServerScriptService);
+	// Fill in our instanceId so the injected peers attach to this Studio. The server
+	// templated the port and version; the instanceId is known only here.
+	const [filled] = source.gsub("{{INSTANCE_ID}}", INSTANCE_ID);
+	injectRunner(filled, Enum.RunContext.Server, ServerScriptService);
 	if (mode === "play") {
 		const clientContainer = clientScriptsContainer();
-		if (clientContainer !== undefined) injectRunner(source, Enum.RunContext.Client, clientContainer);
+		if (clientContainer !== undefined) injectRunner(filled, Enum.RunContext.Client, clientContainer);
 	}
 
 	const studioTest = getStudioTestService();

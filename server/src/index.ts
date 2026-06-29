@@ -44,21 +44,33 @@ function asText(r: BridgeResult): { content: Array<{ type: "text"; text: string 
 server.registerTool(
   "studio_status",
   {
-    description: "Report whether the Tripwire Studio plugin is connected, and the open place name.",
+    description: "Report whether a Studio plugin is connected, the active place, and any other connected studios.",
     inputSchema: {},
   },
-  async () => ({
-    content: [
-      {
-        type: "text",
-        text: bridge.connected
-          ? `Connected. Place: ${bridge.placeName}`
-          : bridge.lastError
-            ? `Not connected: ${bridge.lastError}`
-            : 'Plugin not connected. Open Studio, install the Tripwire plugin, click its toolbar button, and enable "Allow HTTP Requests".',
-      },
-    ],
-  }),
+  async () => ({ content: [{ type: "text", text: bridge.statusText() }] }),
+);
+
+server.registerTool(
+  "list_studios",
+  {
+    description:
+      "List every connected (or recently seen) Studio: instanceId, place, whether it is connected and active, how long ago it was last seen, and whether a playtest is running. Pure server state; works even with nothing connected.",
+    inputSchema: {},
+  },
+  async () => ({ content: [{ type: "text", text: JSON.stringify(bridge.listStudios(), undefined, 2) }] }),
+);
+
+server.registerTool(
+  "set_active_studio",
+  {
+    description:
+      "Choose which connected Studio subsequent tools target, by exact instanceId, a unique id prefix, or a unique place name. With one Studio connected this is automatic.",
+    inputSchema: { studio: z.string() },
+  },
+  async ({ studio }) => {
+    const r = bridge.setActiveStudio(studio);
+    return { content: [{ type: "text", text: r.ok ? (r.message ?? "ok") : `Error: ${r.error}` }] };
+  },
 );
 
 server.registerTool(
