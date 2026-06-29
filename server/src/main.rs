@@ -69,6 +69,90 @@ fn any_json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
     .expect("static schema is valid")
 }
 
+// A Roblox property value is a tagged union, so the schema has to spell out the shape
+// or a model will send a raw value (true, [x,y,z]) that the plugin can't decode.
+fn wire_value_json() -> Value {
+    json!({
+        "type": "object",
+        "description": "A typed Roblox value, tagged by `type`. Shapes: \
+    primitive {\"type\":\"primitive\",\"value\":true|42|\"text\"}; \
+    Vector3 {\"type\":\"Vector3\",\"value\":[x,y,z]}; \
+    Color3 {\"type\":\"Color3\",\"value\":[r,g,b],\"rgb255\":true} (rgb255 true means 0-255, omit for 0-1); \
+    UDim2 {\"type\":\"UDim2\",\"value\":[sx,ox,sy,oy]}; \
+    CFrame {\"type\":\"CFrame\",\"value\":[x,y,z]} (3 numbers) or 12 numbers for orientation; \
+    EnumItem {\"type\":\"EnumItem\",\"enum\":\"Material\",\"item\":\"Neon\"}; \
+    instance {\"type\":\"instance\",\"path\":\"Workspace.Part\"}.",
+        "properties": {
+            "type": { "type": "string", "enum": ["primitive", "Vector3", "Color3", "UDim2", "CFrame", "EnumItem", "instance"] },
+            "value": { "description": "payload for primitive / Vector3 / Color3 / UDim2 / CFrame" },
+            "enum": { "type": "string", "description": "enum group for EnumItem, e.g. Material" },
+            "item": { "type": "string", "description": "enum item for EnumItem, e.g. Neon" },
+            "path": { "type": "string", "description": "instance path when type is instance" },
+            "rgb255": { "type": "boolean", "description": "set true when Color3 components are 0-255" }
+        },
+        "required": ["type"]
+    })
+}
+
+fn wire_value_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    serde_json::from_value(wire_value_json()).expect("static schema is valid")
+}
+
+fn properties_json() -> Value {
+    json!({
+        "type": "array",
+        "description": "Initial properties: a list of { name, value } where value is a typed datatype.",
+        "items": {
+            "type": "object",
+            "properties": { "name": { "type": "string" }, "value": wire_value_json() },
+            "required": ["name", "value"]
+        }
+    })
+}
+
+fn properties_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    serde_json::from_value(properties_json()).expect("static schema is valid")
+}
+
+fn mass_create_items_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    serde_json::from_value(json!({
+        "type": "array",
+        "description": "Instances to create: a list of { className, parentPath?, name?, properties? }.",
+        "items": {
+            "type": "object",
+            "properties": {
+                "className": { "type": "string" },
+                "parentPath": { "type": "string" },
+                "name": { "type": "string" },
+                "properties": properties_json()
+            },
+            "required": ["className"]
+        }
+    }))
+    .expect("static schema is valid")
+}
+
+fn mass_set_items_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    serde_json::from_value(json!({
+        "type": "array",
+        "description": "Property writes: a list of { path, name, value } where value is a typed datatype.",
+        "items": {
+            "type": "object",
+            "properties": { "path": { "type": "string" }, "name": { "type": "string" }, "value": wire_value_json() },
+            "required": ["path", "name", "value"]
+        }
+    }))
+    .expect("static schema is valid")
+}
+
+fn primitive_value_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    serde_json::from_value(json!({
+        "type": ["string", "number", "boolean"],
+        "description": "A primitive value to match (string, number, or boolean)."
+    }))
+    .expect("static schema is valid")
+}
+
 // ===== tool input shapes (camelCase on the wire; absent optionals are omitted) =====
 
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
@@ -123,7 +207,7 @@ struct SearchObjectsArgs {
 struct SearchByPropertyArgs {
     property: String,
     /// A primitive value (string, number, or boolean).
-    #[schemars(schema_with = "any_json_schema")]
+    #[schemars(schema_with = "primitive_value_schema")]
     value: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     class_name: Option<String>,
@@ -160,7 +244,7 @@ struct CreateInstanceArgs {
     name: Option<String>,
     /// Initial properties: a list of { name, value } where value is a typed datatype.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schemars(schema_with = "any_json_schema")]
+    #[schemars(schema_with = "properties_schema")]
     properties: Option<Value>,
 }
 
@@ -170,7 +254,7 @@ struct SetPropertyArgs {
     path: String,
     name: String,
     /// A typed datatype (primitive, Vector3, Color3, UDim2, CFrame, EnumItem, or an instance path).
-    #[schemars(schema_with = "any_json_schema")]
+    #[schemars(schema_with = "wire_value_schema")]
     value: Value,
 }
 
@@ -195,7 +279,7 @@ struct InsertModelArgs {
     unpack: Option<bool>,
     /// A CFrame datatype to reposition the model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schemars(schema_with = "any_json_schema")]
+    #[schemars(schema_with = "wire_value_schema")]
     pivot_to: Option<Value>,
 }
 
@@ -203,7 +287,7 @@ struct InsertModelArgs {
 #[serde(rename_all = "camelCase")]
 struct MassCreateArgs {
     /// A list of create specs ({ className, parentPath?, name?, properties? }).
-    #[schemars(schema_with = "any_json_schema")]
+    #[schemars(schema_with = "mass_create_items_schema")]
     items: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     atomic: Option<bool>,
@@ -213,7 +297,7 @@ struct MassCreateArgs {
 #[serde(rename_all = "camelCase")]
 struct MassSetArgs {
     /// A list of { path, name, value } specs.
-    #[schemars(schema_with = "any_json_schema")]
+    #[schemars(schema_with = "mass_set_items_schema")]
     items: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     atomic: Option<bool>,
