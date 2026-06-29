@@ -4,7 +4,7 @@
 
 **made by alibolly**
 
-[![npm](https://img.shields.io/badge/npm-coming_soon-cb3837?logo=npm&logoColor=white)](https://github.com/aliboIly/Tripwire/releases)
+[![npm](https://img.shields.io/npm/v/tripwire-roblox?logo=npm&logoColor=white)](https://www.npmjs.com/package/tripwire-roblox)
 [![CI](https://github.com/aliboIly/Tripwire/actions/workflows/ci.yml/badge.svg)](https://github.com/aliboIly/Tripwire/actions/workflows/ci.yml)
 
 An MCP server that gives an AI coding agent real control of Roblox Studio and Roblox Open Cloud,

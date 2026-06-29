@@ -1,6 +1,6 @@
 {
   "name": "tripwire-roblox",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Tripwire: an MCP server for Roblox Studio and Open Cloud. Downloads the prebuilt Rust binary for your platform.",
   "bin": {
     "tripwire-roblox": "bin/cli.js"

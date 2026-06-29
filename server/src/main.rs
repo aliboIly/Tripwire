@@ -1440,7 +1440,11 @@ impl ServerHandler for Tripwire {
         let mut info = ServerInfo::default();
         info.protocol_version = ProtocolVersion::V_2024_11_05;
         info.capabilities = ServerCapabilities::builder().enable_tools().build();
-        info.server_info = Implementation::from_build_env();
+        // from_build_env() reports the rmcp crate, not this binary; identify as Tripwire.
+        let mut server_info = Implementation::from_build_env();
+        server_info.name = "tripwire-server".into();
+        server_info.version = env!("CARGO_PKG_VERSION").into();
+        info.server_info = server_info;
         info.instructions = Some("Tripwire drives Roblox Studio and Roblox Open Cloud.".into());
         info
     }
