@@ -12,7 +12,13 @@ import {
   formatHarness,
   formatTestList,
 } from "./harness.js";
-import { startPlaytest, startSimulation, stopSimulation, stopPlaytest } from "./playtest.js";
+import {
+  startPlaytest,
+  startSimulation,
+  stopSimulation,
+  stopPlaytest,
+  getPlaytestOutput,
+} from "./playtest.js";
 
 // This process speaks MCP over stdout. Never console.log to stdout, since it
 // corrupts the protocol stream. Diagnostics go to stderr.
@@ -298,6 +304,57 @@ server.registerTool(
     inputSchema: {},
   },
   async () => asText(await stopPlaytest(bridge)),
+);
+
+server.registerTool(
+  "simulate_mouse_input",
+  {
+    description:
+      "Simulate a mouse click or move at screen coordinates during an F5 playtest. Runs on the client peer, so it requires start_playtest (not start_simulation). action 'click' presses and releases; 'move' just moves the cursor.",
+    inputSchema: {
+      x: z.number(),
+      y: z.number(),
+      button: z.enum(["left", "right", "middle"]).optional(),
+      action: z.enum(["click", "move"]).optional(),
+    },
+  },
+  async (args) => asText(await bridge.send("mouse_input", args, "client", 10000)),
+);
+
+server.registerTool(
+  "simulate_keyboard_input",
+  {
+    description:
+      "Simulate keyboard input during an F5 playtest: a key by KeyCode name (for example 'Space' or 'W') with action tap/press/release, or typed text. Runs on the client peer, so it requires start_playtest.",
+    inputSchema: {
+      key: z.string().optional(),
+      text: z.string().optional(),
+      action: z.enum(["tap", "press", "release"]).optional(),
+    },
+  },
+  async (args) => asText(await bridge.send("keyboard_input", args, "client", 10000)),
+);
+
+server.registerTool(
+  "character_navigation",
+  {
+    description:
+      "Walk the local player's character toward a world position during an F5 playtest (Humanoid:MoveTo). Returns whether it reached the goal; reached=false can mean the ~8s move timeout. Client peer, so it requires start_playtest.",
+    inputSchema: { x: z.number(), y: z.number(), z: z.number() },
+  },
+  // 20s exceeds the runner's worst case (up to 10s waiting for the Humanoid plus the
+  // ~8s MoveTo self-timeout) so a slow spawn cannot drop the command.
+  async (args) => asText(await bridge.send("character_navigation", args, "client", 20000)),
+);
+
+server.registerTool(
+  "get_playtest_output",
+  {
+    description:
+      "Return the running playtest's output log, aggregated across the server and client peers and tagged by peer.",
+    inputSchema: {},
+  },
+  async () => asText(await getPlaytestOutput(bridge)),
 );
 
 // The security tools run a local static analysis over a Rojo source tree. They

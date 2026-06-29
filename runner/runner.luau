@@ -14,6 +14,8 @@
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
+local LogService = game:GetService("LogService")
+local UserInputService = game:GetService("UserInputService")
 
 local BRIDGE = "http://127.0.0.1:{{PORT}}"
 local PROTOCOL_VERSION = {{PROTOCOL_VERSION}}
@@ -30,14 +32,124 @@ local function post(path, body)
 	end)
 end
 
+local function reply(cmd, ok, dataOrError)
+	if ok then
+		post("/result", { id = cmd.id, ok = true, data = dataOrError })
+	else
+		post("/result", { id = cmd.id, ok = false, error = dataOrError })
+	end
+end
+
+-- VirtualInput drives mouse/keyboard exactly like real hardware. It is client-only
+-- (Security None, so a normal injected client script can call it) and may be nil on
+-- older Studio. Create it once, lazily.
+local virtualInput = nil
+local function getVirtualInput()
+	if virtualInput == nil and ROLE == "client" then
+		virtualInput = UserInputService:CreateVirtualInput()
+	end
+	return virtualInput
+end
+
+local function mouseInput(cmd)
+	if ROLE ~= "client" then
+		return reply(cmd, false, "mouse input needs a client peer (use start_playtest, not start_simulation)")
+	end
+	local vi = getVirtualInput()
+	if not vi then
+		return reply(cmd, false, "VirtualInput is unavailable in this Studio version")
+	end
+	local p = cmd.payload
+	local pos = Vector2.new(p.x or 0, p.y or 0)
+	if p.action == "move" then
+		vi:SendMousePosition(pos)
+	else
+		local button = Enum.UserInputType.MouseButton1
+		if p.button == "right" then
+			button = Enum.UserInputType.MouseButton2
+		elseif p.button == "middle" then
+			button = Enum.UserInputType.MouseButton3
+		end
+		vi:SendMouseButton(pos, button, true, 0)
+		task.wait()
+		vi:SendMouseButton(pos, button, false, 0)
+	end
+	task.wait() -- let the input pipeline process before reporting
+	reply(cmd, true, { x = pos.X, y = pos.Y, action = p.action or "click" })
+end
+
+local function keyboardInput(cmd)
+	if ROLE ~= "client" then
+		return reply(cmd, false, "keyboard input needs a client peer (use start_playtest)")
+	end
+	local vi = getVirtualInput()
+	if not vi then
+		return reply(cmd, false, "VirtualInput is unavailable in this Studio version")
+	end
+	local p = cmd.payload
+	if p.text ~= nil then
+		vi:SendTextInput(p.text)
+	elseif p.key ~= nil then
+		local okKey, keyCode = pcall(function()
+			return Enum.KeyCode[p.key]
+		end)
+		if not okKey or keyCode == nil then
+			return reply(cmd, false, "unknown key: " .. tostring(p.key))
+		end
+		local action = p.action or "tap"
+		if action == "release" then
+			vi:SendKey(false, keyCode, false)
+		else
+			vi:SendKey(true, keyCode, false) -- isPressed first, then keyCode
+			if action == "tap" then
+				task.wait()
+				vi:SendKey(false, keyCode, false)
+			end
+		end
+	else
+		return reply(cmd, false, "keyboard_input needs a 'text' or 'key' field")
+	end
+	task.wait()
+	reply(cmd, true, { ok = true })
+end
+
+local function characterNavigation(cmd)
+	if ROLE ~= "client" then
+		return reply(cmd, false, "navigation needs a client peer (use start_playtest)")
+	end
+	local p = cmd.payload
+	local player = Players.LocalPlayer
+	if not player then
+		return reply(cmd, false, "no LocalPlayer")
+	end
+	local character = player.Character or player.CharacterAdded:Wait()
+	local humanoid = character:WaitForChild("Humanoid", 10)
+	if not humanoid then
+		return reply(cmd, false, "character has no Humanoid")
+	end
+	humanoid:MoveTo(Vector3.new(p.x or 0, p.y or 0, p.z or 0))
+	-- MoveToFinished self-times-out after ~8s and fires reached=false even if still
+	-- walking, so this Wait never hangs indefinitely.
+	local reached = humanoid.MoveToFinished:Wait()
+	local position = character:GetPivot().Position
+	reply(cmd, true, { reached = reached, position = { position.X, position.Y, position.Z } })
+end
+
+local function getLogs(cmd)
+	local entries = {}
+	for _, entry in ipairs(LogService:GetLogHistory()) do
+		table.insert(entries, { message = entry.message, type = entry.messageType.Name, timestamp = entry.timestamp })
+	end
+	reply(cmd, true, { role = ROLE, entries = entries })
+end
+
 local function handle(cmd)
 	if cmd.type == "in_play_ping" then
-		post("/result", { id = cmd.id, ok = true, data = { role = ROLE, players = #Players:GetPlayers() } })
+		reply(cmd, true, { role = ROLE, players = #Players:GetPlayers() })
 	elseif cmd.type == "stop" then
-		-- EndTest must be called from the server DataModel and ends the session,
-		-- which is how an F5/F8 test is stopped from inside the running game. Post
-		-- the result first, because the DataModel may tear down right after.
-		post("/result", { id = cmd.id, ok = true, data = { stopping = true, role = ROLE } })
+		-- EndTest must be called from the server DataModel and ends the session.
+		-- Reply first, because the DataModel may tear down right after.
+		reply(cmd, true, { stopping = true, role = ROLE })
 		if ROLE == "server" then
 			local studioTest = game:FindService("StudioTestService")
 			if studioTest then
@@ -46,8 +158,16 @@ local function handle(cmd)
 				end)
 			end
 		end
+	elseif cmd.type == "mouse_input" then
+		mouseInput(cmd)
+	elseif cmd.type == "keyboard_input" then
+		keyboardInput(cmd)
+	elseif cmd.type == "character_navigation" then
+		characterNavigation(cmd)
+	elseif cmd.type == "get_logs" then
+		getLogs(cmd)
 	else
-		post("/result", { id = cmd.id, ok = false, error = "unknown in-play command: " .. tostring(cmd.type) })
+		reply(cmd, false, "unknown in-play command: " .. tostring(cmd.type))
 	end
 end
 

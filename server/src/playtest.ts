@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Bridge, BridgeResult, PROTOCOL_VERSION } from "./bridge.js";
+import { Bridge, BridgeResult, PROTOCOL_VERSION, Role } from "./bridge.js";
 
 const STOP_TIMEOUT_MS = 15000;
 
@@ -60,4 +60,44 @@ export async function stopPlaytest(bridge: Bridge): Promise<BridgeResult> {
 
 export async function stopSimulation(bridge: Bridge): Promise<BridgeResult> {
   return requestStop(bridge, "simulation");
+}
+
+interface PeerLogEntry {
+  message: string;
+  type: string;
+  timestamp: number;
+  peer: Role;
+}
+
+// Aggregates the output log across the server and client runners. A peer that is
+// not present (for example no client under F8) simply contributes nothing rather
+// than failing the call. Entries are merged, deduped by timestamp+message, and
+// sorted oldest first; the merge happens here, never in-engine.
+export async function getPlaytestOutput(bridge: Bridge): Promise<BridgeResult> {
+  const peers: Role[] = ["server", "client"];
+  const settled = await Promise.allSettled(peers.map((role) => bridge.send("get_logs", {}, role, 5000)));
+
+  const entriesFrom = (index: number): Array<{ message: string; type: string; timestamp: number }> => {
+    const result = settled[index];
+    if (result.status !== "fulfilled" || !result.value.ok) return [];
+    const data = result.value.data as { entries?: Array<{ message: string; type: string; timestamp: number }> } | undefined;
+    return data?.entries ?? [];
+  };
+
+  // Keep every server entry (including legitimate repeats), then keep client
+  // entries except those that echo a server message (Studio mirrors server output
+  // into the client log). This removes cross-peer duplicates without collapsing a
+  // peer's own repeated lines.
+  const entries: PeerLogEntry[] = [];
+  const serverKeys = new Set<string>();
+  for (const entry of entriesFrom(0)) {
+    serverKeys.add(`${entry.timestamp}|${entry.message}`);
+    entries.push({ message: entry.message, type: entry.type, timestamp: entry.timestamp, peer: "server" });
+  }
+  for (const entry of entriesFrom(1)) {
+    if (serverKeys.has(`${entry.timestamp}|${entry.message}`)) continue;
+    entries.push({ message: entry.message, type: entry.type, timestamp: entry.timestamp, peer: "client" });
+  }
+  entries.sort((a, b) => a.timestamp - b.timestamp);
+  return { ok: true, data: { entries } };
 }
