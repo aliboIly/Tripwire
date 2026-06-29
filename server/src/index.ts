@@ -21,6 +21,7 @@ import {
   getPlaytestOutput,
 } from "./playtest.js";
 import { uploadAsset } from "./assets.js";
+import { publishPlace } from "./publish.js";
 import { config as loadEnv } from "dotenv";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -161,6 +162,19 @@ server.registerTool(
       ? `Wrote ${r.path}. Rebuild (rbxtsc) and publish the place, then run_tests.`
       : `Error: ${r.error}`;
     return { content: [{ type: "text", text }] };
+  },
+);
+
+server.registerTool(
+  "publish_place",
+  {
+    description:
+      "Publish a local place file (.rbxl or .rbxlx) as a new version of the configured experience via Open Cloud. Needs ROBLOX_OPEN_CLOUD_KEY (with the universe-places write scope), ROBLOX_UNIVERSE_ID, and ROBLOX_PLACE_ID in the server env. Use it to put a built test place (harness + specs) into the place that run_tests reads. versionType 'Published' (default) goes live; 'Saved' uploads a draft. Fails with a conflict if Studio has the place open with an active session.",
+    inputSchema: { filePath: z.string(), versionType: z.enum(["Published", "Saved"]).optional() },
+  },
+  async ({ filePath, versionType }) => {
+    const r = await publishPlace({ filePath, versionType });
+    return { content: [{ type: "text", text: r.ok ? `Published version ${r.versionNumber}.` : `Error: ${r.error}` }] };
   },
 );
 
