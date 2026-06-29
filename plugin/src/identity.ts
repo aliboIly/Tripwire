@@ -12,10 +12,12 @@ export const INSTANCE_ID = HttpService.GenerateGUID(false);
 
 const INSTALL_ID_KEY = "tripwireInstallId";
 
-export function installId(): string {
-	const existing = plugin.GetSetting(INSTALL_ID_KEY);
+// `plugin` is a global only in the plugin's main script, not in required modules,
+// so the caller (main.server) passes it in.
+export function installId(pluginInstance: Plugin): string {
+	const existing = pluginInstance.GetSetting(INSTALL_ID_KEY);
 	if (typeIs(existing, "string")) return existing;
 	const created = HttpService.GenerateGUID(false);
-	plugin.SetSetting(INSTALL_ID_KEY, created);
+	pluginInstance.SetSetting(INSTALL_ID_KEY, created);
 	return created;
 }

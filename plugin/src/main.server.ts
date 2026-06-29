@@ -63,7 +63,7 @@ function announce(): boolean {
 				protocolVersion: PROTOCOL_VERSION,
 				role: "plugin",
 				instanceId: INSTANCE_ID,
-				installId: installId(),
+				installId: installId(plugin),
 				placeName: game.Name,
 				placeId: game.PlaceId,
 				userId: plugin.GetStudioUserId(),
