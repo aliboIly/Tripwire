@@ -1,0 +1,41 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.aliboIly/tripwire",
+  "title": "Tripwire",
+  "description": "MCP for Roblox Studio and Open Cloud: drive Studio, run headless tests, and review game security.",
+  "version": "0.2.3",
+  "repository": {
+    "url": "https://github.com/aliboIly/Tripwire",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "tripwire-roblox",
+      "version": "0.2.3",
+      "runtimeHint": "npx",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "ROBLOX_OPEN_CLOUD_KEY",
+          "description": "Open Cloud API key. Needed for the headless test and Open Cloud tools; the Studio path does not use it.",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "ROBLOX_UNIVERSE_ID",
+          "description": "Universe id the Open Cloud tools target. Set it alongside the key and place id.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "ROBLOX_PLACE_ID",
+          "description": "Place id the Open Cloud tools target. Set it alongside the key and universe id.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}
