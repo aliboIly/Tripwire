@@ -241,6 +241,7 @@ returns Roblox's own error if a scope is missing, so you can add scopes as you g
 <details><summary><code>grep_scripts</code></summary>Search script sources for a substring; returns path, line number, and line.</details>
 <details><summary><code>get_output_log</code></summary>Recent Studio Output entries (message, type, timestamp).</details>
 <details><summary><code>get_selection</code></summary>The instances currently selected in Studio.</details>
+<details><summary><code>get_class_info</code></summary>Look up a Roblox class's members (properties, methods, events) with their types, inherited members folded in. Answered from a bundled API reflection dump, so it needs no Studio and no key.</details>
 
 ### Edit (each is one undo step)
 <details><summary><code>create_instance</code></summary>Create an instance of a class with an optional name and initial properties.</details>

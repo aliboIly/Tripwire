@@ -4,6 +4,7 @@
 
 mod assets;
 mod bridge;
+mod classinfo;
 mod cloud;
 mod env;
 mod harness;
@@ -232,6 +233,22 @@ struct GrepArgs {
 struct LimitArgs {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     limit: Option<i64>,
+}
+
+#[derive(Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct ClassInfoArgs {
+    /// The Roblox class name, case-sensitive, for example "Part" or "Humanoid".
+    class_name: String,
+    /// Include members inherited from superclasses. Defaults to true.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    include_inherited: Option<bool>,
+    /// Keep only members of this kind: Property, Function, Event, or Callback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    member_kind: Option<String>,
+    /// Keep only members whose name contains this substring (case-insensitive).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    name_filter: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
@@ -775,6 +792,27 @@ impl Tripwire {
         Ok(self
             .relay("get_selection", json!({}), Role::Plugin, DEFAULT_TIMEOUT)
             .await)
+    }
+
+    #[tool(
+        description = "Look up a Roblox class's members (properties, methods, events) with their types, inherited members folded in by default. Answered from a bundled API reflection dump, so it needs no Studio and no key. Read-only."
+    )]
+    async fn get_class_info(
+        &self,
+        Parameters(a): Parameters<ClassInfoArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let include_inherited = a.include_inherited.unwrap_or(true);
+        Ok(
+            match classinfo::class_info(
+                &a.class_name,
+                include_inherited,
+                a.member_kind.as_deref(),
+                a.name_filter.as_deref(),
+            ) {
+                Ok(report) => text(report),
+                Err(e) => text(format!("Error: {e}")),
+            },
+        )
     }
 
     // --- edit (one undo step each) ---
