@@ -1,0 +1,44 @@
+name: Feature request
+description: Suggest a new tool or an improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the use case before the solution. For larger ideas, this is the
+        place to agree on the shape before any code.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that Tripwire does not let you do today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: The tool, flag, or behavior you have in mind.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Studio tools (read/write/edit/inspect)
+        - Playtest and input
+        - Headless tests (Open Cloud)
+        - Security review
+        - Open Cloud APIs (DataStores, Messaging, Memory, platform)
+        - Server, bridge, or plumbing
+        - Docs
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+    validations:
+      required: false

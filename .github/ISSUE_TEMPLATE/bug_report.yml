@@ -1,0 +1,79 @@
+name: Bug report
+description: Report something in Tripwire that does not work
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Fill in as much as you can so it can be reproduced.
+        Do not paste your Open Cloud API key or any other secret.
+
+        Check the Known limits in the README first. F5 stop being best-effort,
+        in-play actions going through the runner, and headless tests running a
+        server context are platform limits, not bugs.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what did you get instead?
+      placeholder: I called start_playtest and ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact tool calls or actions, in order.
+    validations:
+      required: true
+  - type: dropdown
+    id: path
+    attributes:
+      label: Which path
+      description: Did the failing tool use the Studio bridge or Open Cloud?
+      options:
+        - Studio (plugin bridge, no key)
+        - Open Cloud (API key)
+        - Security review (static analysis)
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      description: Which client ran the server, and its version.
+      placeholder: Claude Code, Codex, Gemini, ...
+    validations:
+      required: true
+  - type: input
+    id: server-version
+    attributes:
+      label: Tripwire server version
+      description: From the binary, or the npx version you ran.
+      placeholder: 0.2.3
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Studio plugin version (if the Studio path failed)
+      description: The [Tripwire vX.Y.Z] prefix in the Studio Output.
+      placeholder: 0.2.3
+    validations:
+      required: false
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 15, Windows 11, Ubuntu 24.04
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant server output or Studio Output. Redact any secrets.
+      render: shell
+    validations:
+      required: false
