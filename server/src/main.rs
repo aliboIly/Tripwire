@@ -13,6 +13,7 @@ mod httpx;
 mod opencloud;
 mod playtest;
 mod publish;
+mod screenshot;
 mod security;
 
 use std::sync::Arc;
@@ -36,6 +37,8 @@ const WRITE_BATCH_TIMEOUT: Duration = Duration::from_secs(60);
 const INPUT_TIMEOUT: Duration = Duration::from_secs(40);
 // `review --strict` exits with this when the reviewer found something, so CI can gate on it.
 const REVIEW_FINDINGS_EXIT_CODE: i32 = 2;
+// A screenshot capture waits on a Studio render, so it gets longer than the default.
+const CAPTURE_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn text(body: impl Into<String>) -> CallToolResult {
     CallToolResult::success(vec![Content::text(body.into())])
@@ -47,6 +50,24 @@ fn as_text(result: Result<BridgeResult, String>) -> CallToolResult {
         Ok(r) if r.ok => {
             text(serde_json::to_string_pretty(&r.data).unwrap_or_else(|_| r.data.to_string()))
         }
+        Ok(r) => text(format!(
+            "Error: {}",
+            r.error.unwrap_or_else(|| "command failed".into())
+        )),
+        Err(e) => text(format!("Error: {e}")),
+    }
+}
+
+// Renders a captured frame as an MCP image block, or a clear error. The plugin sends
+// raw RGBA; the JPEG encoding happens in screenshot::encode_capture.
+fn as_image(result: Result<BridgeResult, String>) -> CallToolResult {
+    match result {
+        Ok(r) if r.ok => match screenshot::encode_capture(&r.data) {
+            Ok(jpeg_base64) => {
+                CallToolResult::success(vec![Content::image(jpeg_base64, "image/jpeg")])
+            }
+            Err(e) => text(format!("Error: {e}")),
+        },
         Ok(r) => text(format!(
             "Error: {}",
             r.error.unwrap_or_else(|| "command failed".into())
@@ -880,6 +901,22 @@ impl Tripwire {
         Ok(self
             .relay("find_spawns", a, Role::Plugin, DEFAULT_TIMEOUT)
             .await)
+    }
+
+    #[tool(
+        description = "Capture the Studio viewport and return it as a JPEG image, so you can see the scene. Needs the plugin connected and Game Settings > Security > Allow Mesh / Image APIs enabled. Edit mode only."
+    )]
+    async fn capture_screenshot(&self) -> Result<CallToolResult, McpError> {
+        Ok(as_image(
+            self.bridge
+                .send(
+                    "capture_screenshot",
+                    json!({}),
+                    Role::Plugin,
+                    CAPTURE_TIMEOUT,
+                )
+                .await,
+        ))
     }
 
     // --- edit (one undo step each) ---

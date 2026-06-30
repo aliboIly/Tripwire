@@ -247,6 +247,7 @@ returns Roblox's own error if a scope is missing, so you can add scopes as you g
 <details><summary><code>raycast</code></summary>Cast a ray and report the first hit (instance, position, normal, material, distance) or no hit, with an optional excluded subtree.</details>
 <details><summary><code>get_bounding_box</code></summary>The world-space bounding box (center and size) of a Model or BasePart.</details>
 <details><summary><code>find_spawns</code></summary>List the SpawnLocations under a path: position, whether each is enabled, and whether it is neutral.</details>
+<details><summary><code>capture_screenshot</code></summary>Capture the Studio viewport as a JPEG image so the agent can see the scene. Needs the plugin connected and Allow Mesh / Image APIs enabled (Game Settings, Security). Edit mode only.</details>
 
 ### Edit (each is one undo step)
 <details><summary><code>create_instance</code></summary>Create an instance of a class with an optional name and initial properties.</details>

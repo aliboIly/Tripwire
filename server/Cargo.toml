@@ -25,6 +25,8 @@ anyhow = "1"
 percent-encoding = "2"
 dotenvy = "0.15"
 swc_core = { version = "71", features = ["common", "ecma_ast", "ecma_parser", "ecma_visit"] }
+base64 = "0.22"
+jpeg-encoder = "0.6"
 
 [profile.release]
 strip = true
