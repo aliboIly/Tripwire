@@ -9,15 +9,18 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
+use serde::Serialize;
 use swc_core::common::sync::Lrc;
 use swc_core::common::{FileName, SourceFile, SourceMap, Span, Spanned};
 use swc_core::ecma::ast::{
-    AssignExpr, AssignOp, AssignTarget, BlockStmtOrExpr, Callee, Expr, IfStmt, MemberProp, Pat,
-    SimpleAssignTarget, TsAsExpr,
+    AssignExpr, AssignOp, AssignTarget, BinExpr, BinaryOp, BlockStmtOrExpr, Callee, Expr, IfStmt,
+    Lit, MemberProp, Pat, SimpleAssignTarget, TsAsExpr, UnaryOp,
 };
 use swc_core::ecma::parser::{lexer::Lexer, Parser, StringInput, Syntax, TsSyntax};
 use swc_core::ecma::visit::{Visit, VisitWith};
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Handler {
     pub file: String,
     pub line: usize,
@@ -26,6 +29,8 @@ pub struct Handler {
     pub client_params: Vec<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Finding {
     pub file: String,
     pub line: usize,
@@ -84,11 +89,12 @@ fn analyze_file(file: &Path, report: &mut Report) {
         Ok(source) => source,
         Err(_) => return,
     };
+    analyze_source(&file.to_string_lossy(), &source, report);
+}
+
+fn analyze_source(name: &str, source: &str, report: &mut Report) {
     let cm: Lrc<SourceMap> = Default::default();
-    let fm = cm.new_source_file(
-        FileName::Custom(file.to_string_lossy().into_owned()).into(),
-        source,
-    );
+    let fm = cm.new_source_file(FileName::Custom(name.to_owned()).into(), source.to_owned());
     let lexer = Lexer::new(
         Syntax::Typescript(TsSyntax::default()),
         Default::default(),
@@ -101,7 +107,7 @@ fn analyze_file(file: &Path, report: &mut Report) {
         Err(_) => return,
     };
     let mut analyzer = Analyzer {
-        file: file.to_string_lossy().into_owned(),
+        file: name.to_owned(),
         fm,
         report,
     };
@@ -276,9 +282,13 @@ impl Visit for BodyScan {
     }
 
     fn visit_if_stmt(&mut self, stmt: &IfStmt) {
-        let mut idents = IdentCollector::default();
-        stmt.test.visit_with(&mut idents);
-        self.validated.extend(idents.0);
+        // Only a real check counts as validation. A bare truthy guard like
+        // `if (amount)` or an existence check `if (amount !== undefined)` does not stop
+        // a client from forging a huge number, so the value stays tainted. We mark a
+        // param validated only when the test actually compares or type-checks it.
+        let mut checked = ValidationCollector::default();
+        stmt.test.visit_with(&mut checked);
+        self.validated.extend(checked.0);
         stmt.visit_children_with(self);
     }
 
@@ -294,12 +304,62 @@ impl Visit for BodyScan {
     }
 }
 
+// Collects the params a test genuinely checks: an operand of a comparison
+// (`amount > 0`, `kind === "buy"`) or the subject of a `typeof`. An equality against
+// null/undefined is an existence check, not validation, so it is excluded.
 #[derive(Default)]
-struct IdentCollector(Vec<String>);
+struct ValidationCollector(HashSet<String>);
 
-impl Visit for IdentCollector {
-    fn visit_ident(&mut self, ident: &swc_core::ecma::ast::Ident) {
-        self.0.push(ident.sym.to_string());
+impl Visit for ValidationCollector {
+    fn visit_bin_expr(&mut self, bin: &BinExpr) {
+        if is_relational(bin.op) || (is_equality(bin.op) && !compares_nullish(bin)) {
+            self.note(&bin.left);
+            self.note(&bin.right);
+        }
+        bin.visit_children_with(self);
+    }
+}
+
+impl ValidationCollector {
+    fn note(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Ident(ident) => {
+                self.0.insert(ident.sym.to_string());
+            }
+            // `typeof amount === "number"`: the param is the typeof argument.
+            Expr::Unary(unary) if unary.op == UnaryOp::TypeOf => {
+                if let Expr::Ident(ident) = &*unary.arg {
+                    self.0.insert(ident.sym.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn is_relational(op: BinaryOp) -> bool {
+    matches!(
+        op,
+        BinaryOp::Lt | BinaryOp::LtEq | BinaryOp::Gt | BinaryOp::GtEq
+    )
+}
+
+fn is_equality(op: BinaryOp) -> bool {
+    matches!(
+        op,
+        BinaryOp::EqEq | BinaryOp::NotEq | BinaryOp::EqEqEq | BinaryOp::NotEqEq
+    )
+}
+
+fn compares_nullish(bin: &BinExpr) -> bool {
+    is_nullish(&bin.left) || is_nullish(&bin.right)
+}
+
+fn is_nullish(expr: &Expr) -> bool {
+    match expr {
+        Expr::Lit(Lit::Null(_)) => true,
+        Expr::Ident(ident) => ident.sym.as_str() == "undefined",
+        _ => false,
     }
 }
 
@@ -341,4 +401,63 @@ pub fn format_report(report: &Report) -> String {
         ));
     }
     lines.join("\n")
+}
+
+/// Machine-readable report for tooling that wants to act on findings (CI, dashboards).
+pub fn format_report_json(report: &Report) -> String {
+    let value = serde_json::json!({
+        "handlerCount": report.handlers.len(),
+        "findingCount": report.findings.len(),
+        "findings": report.findings,
+        "handlers": report.handlers,
+    });
+    serde_json::to_string_pretty(&value).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn flagged_params(src: &str) -> Vec<String> {
+        let mut report = Report::default();
+        analyze_source("test.ts", src, &mut report);
+        report.findings.iter().map(|f| f.param.clone()).collect()
+    }
+
+    #[test]
+    fn flags_unvalidated_client_value() {
+        let src = "remote.OnServerEvent.Connect((player, amount) => { grant(player, amount as number); });";
+        assert_eq!(flagged_params(src), ["amount"]);
+    }
+
+    #[test]
+    fn type_check_clears_it() {
+        let src = "remote.OnServerEvent.Connect((player, itemId) => { if (!typeIs(itemId, \"string\")) return; buy(itemId); });";
+        assert!(flagged_params(src).is_empty());
+    }
+
+    #[test]
+    fn bare_truthy_guard_is_not_validation() {
+        // The regression this fix targets: a truthy check does not make a forged number safe.
+        let src = "remote.OnServerEvent.Connect((player, amount) => { if (amount) grant(player, amount as number); });";
+        assert_eq!(flagged_params(src), ["amount"]);
+    }
+
+    #[test]
+    fn existence_check_is_not_validation() {
+        let src = "remote.OnServerEvent.Connect((player, amount) => { if (amount !== undefined) grant(player, amount as number); });";
+        assert_eq!(flagged_params(src), ["amount"]);
+    }
+
+    #[test]
+    fn range_check_is_validation() {
+        let src = "remote.OnServerEvent.Connect((player, amount) => { if (amount > 0 && amount < 100) grant(player, amount); });";
+        assert!(flagged_params(src).is_empty());
+    }
+
+    #[test]
+    fn equality_whitelist_is_validation() {
+        let src = "remote.OnServerEvent.Connect((player, kind) => { if (kind === \"buy\" || kind === \"sell\") act(kind as string); });";
+        assert!(flagged_params(src).is_empty());
+    }
 }
