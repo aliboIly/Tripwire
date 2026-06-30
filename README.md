@@ -6,6 +6,8 @@
 
 [![npm](https://img.shields.io/npm/v/tripwire-roblox?logo=npm&logoColor=white)](https://www.npmjs.com/package/tripwire-roblox)
 [![CI](https://github.com/aliboIly/Tripwire/actions/workflows/ci.yml/badge.svg)](https://github.com/aliboIly/Tripwire/actions/workflows/ci.yml)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-io.github.aliboIly%2Ftripwire-0b7285)](https://registry.modelcontextprotocol.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 An MCP server that gives an AI coding agent real control of Roblox Studio and Roblox Open Cloud,
 with a test-and-security layer no other Studio MCP has.
@@ -16,6 +18,25 @@ Tripwire lets an assistant read, write, and edit the data model, drive playtests
 input, run tests-as-code headlessly in the real engine, flag client-trust exploits in game code,
 and call the Open Cloud APIs (DataStores, MessagingService, Memory Stores, and more). The Studio
 tools need no API key; the headless test, asset, and Open Cloud tools use an Open Cloud key.
+
+---
+
+## Requirements
+
+- An MCP client: Claude Code, Codex, Gemini, or any client that speaks MCP over stdio.
+- Roblox Studio, for the Studio tools. These need no API key.
+- Node.js, only if you run the server with `npx`. The prebuilt binary needs no Node.
+- For the headless test, asset, and Open Cloud tools: a published place and a Roblox Open Cloud API key. See [Open Cloud setup](#open-cloud-setup).
+
+## Quickstart
+
+Tripwire is for Roblox developers who drive Studio through an AI coding agent.
+
+1. Wire the server into your MCP client (one command or a small config block, see [Install](#install) below).
+2. Install the Studio plugin so the Studio tools can reach Studio (see the plugin step in Install).
+3. Open your place in Studio, click the Tripwire toolbar button, and turn on Game Settings > Security > Allow HTTP Requests. The Output prints `[Tripwire v...] connected`.
+4. Ask your agent to run `studio_status`. A connected Studio confirms the bridge works.
+5. Optional: add an Open Cloud key for the headless test, asset, and Open Cloud tools (see Open Cloud setup).
 
 ---
 
@@ -306,6 +327,37 @@ returns Roblox's own error if a scope is missing, so you can add scopes as you g
 
 ---
 
+## Known limits
+
+These are platform limits, not bugs. They are written down here so you know going in.
+
+- F5 playtest stop is best-effort. `stop_playtest` may not take, because the plugin and the running game are separate DataModels. `stop_simulation` (F8) stops cleanly. If an F5 playtest will not stop, press Stop in Studio.
+- In-play actions go through an injected runner. Input, runtime state, and stop during a playtest are relayed over the bridge, not called directly on the plugin.
+- Headless tests run a server context. Open Cloud runs your published place on a server, where `RunService:IsStudio()` is false and plugin APIs are absent. Use it for server and gameplay logic and the security tests, not for Studio-plugin or client-input behaviour.
+- Tool parity with Roblox's built-in Assistant is maintained by hand.
+
+Tripwire is maintained by one person in spare time. Issues and pull requests usually get a reply within about a week. A slow reply is not a no.
+
+---
+
+## Troubleshooting
+
+**The Studio tools time out or report no connected Studio.** The plugin is not running. Install `Tripwire.rbxmx`, restart Studio, click the Tripwire toolbar button, and check the Output for `[Tripwire v...] connected`.
+
+**The plugin reports that HTTP is blocked.** Turn on Game Settings > Security > Allow HTTP Requests on the open place. This is the most common setup failure. Studio cannot reach the local bridge without it.
+
+**The Output shows a version mismatch between the plugin and the server.** The installed `.rbxmx` is stale. Rebuild it (`npx rbxtsc && rojo build --output Tripwire.rbxmx`), copy it into your Plugins folder, and restart Studio. The plugin prints its compiled version, so the prefix tells you what is actually installed.
+
+**An Open Cloud tool returns a 401, 403, or scope error.** The key is missing the scope that tool needs, the universe or place id is wrong, or the place is not published. Add the scope on the Creator Dashboard, confirm the ids, and reconnect the MCP server. The error text is Roblox's own, so it names what is missing.
+
+**`run_tests` does not see your latest change.** It reads the published place. Publish first; `rojo serve` only updates the live edit session, not what Open Cloud runs.
+
+**`npx` cannot fetch the server.** You have no Node.js, or no network for the first download. Install Node, or use the prebuilt binary from the Releases page and point `command` at it (see Alternatives under Install).
+
+**The server says the bridge port is busy.** A previous server is still holding port 44331. Close the old MCP session or the stale process, then reconnect.
+
+---
+
 ## Prior art
 
 The Studio runtime approach (a plugin that long-polls a local server, an injected in-play runner)
@@ -313,6 +365,22 @@ follows ideas from [boshyxd/robloxstudio-mcp](https://github.com/boshyxd/robloxs
 [Chrrxs/robloxstudio-mcp](https://github.com/Chrrxs/robloxstudio-mcp). Tripwire is an independent,
 from-scratch implementation; the headless test harness, the CI security reviewer, and the Open Cloud
 tooling are its own.
+
+---
+
+## Contributing
+
+Bug reports, feature ideas, and patches are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+the setup, the build gates, and the branch and commit rules, and [ARCHITECTURE.md](ARCHITECTURE.md)
+for how the pieces fit together. By taking part you agree to the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
+Found a security issue? Do not open a public issue. See [SECURITY.md](SECURITY.md) for the private
+disclosure path.
+
+## Changelog
+
+Release notes for each version are on the [Releases](https://github.com/aliboIly/Tripwire/releases) page.
 
 ---
 
