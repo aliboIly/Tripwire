@@ -3,6 +3,7 @@
 // bridge runs alongside on a fixed loopback port for the Studio plugin to long-poll.
 
 mod assets;
+mod backdoor;
 mod bridge;
 mod classinfo;
 mod cloud;
@@ -1151,6 +1152,27 @@ impl Tripwire {
                     let rows: Vec<Value> = report.findings.iter().map(|f| json!({ "file": f.file, "line": f.line, "remote": f.remote, "param": f.param, "severity": f.severity, "issue": f.issue, "fix": f.fix })).collect();
                     text(serde_json::to_string_pretty(&rows).unwrap_or_default())
                 }
+                Err(e) => text(format!("Error: {e}")),
+            },
+        )
+    }
+
+    #[tool(
+        description = "Scan the live place's scripts for free-model backdoor patterns: runtime code execution (loadstring), environment tampering (getfenv/setfenv), fetching code over HTTP (HttpGet), require by asset id, and obfuscated payloads. Reads script source through the plugin (default the whole game), so it is worth running after insert_model. Read-only."
+    )]
+    async fn scan_backdoors(
+        &self,
+        Parameters(a): Parameters<PathArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let payload = json!({ "keywords": backdoor::PREFILTER_KEYWORDS, "path": a.path });
+        Ok(
+            match self
+                .bridge
+                .send("scan_backdoors", payload, Role::Plugin, DEFAULT_TIMEOUT)
+                .await
+            {
+                Ok(r) if r.ok => text(backdoor::scan_collected(&r.data)),
+                Ok(r) => text(format!("Error: {}", r.error.unwrap_or_default())),
                 Err(e) => text(format!("Error: {e}")),
             },
         )
