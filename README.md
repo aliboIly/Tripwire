@@ -234,9 +234,9 @@ returns Roblox's own error if a scope is missing, so you can add scopes as you g
 ### Read and inspect
 <details><summary><code>get_file_tree</code></summary>List the instance tree from a path (default the whole game), bounded by depth.</details>
 <details><summary><code>get_instance_children</code></summary>List the direct children (name and class) of an instance.</details>
-<details><summary><code>get_instance_properties</code></summary>Read an instance's name, class, full path, and attributes.</details>
-<details><summary><code>search_objects</code></summary>Find instances whose name contains a query, optionally filtered by class.</details>
-<details><summary><code>search_by_property</code></summary>Find instances whose property equals a value, optionally filtered by class.</details>
+<details><summary><code>get_instance_properties</code></summary>Read an instance's name, class, full path, attributes, and a curated set of common engine properties (Position, Size, Color, Material, Anchored, Text, and so on).</details>
+<details><summary><code>search_objects</code></summary>Find instances whose name contains a query, optionally filtered by exact class or by class-and-subclasses (isA).</details>
+<details><summary><code>search_by_property</code></summary>Find instances whose property equals a value, optionally filtered by exact class or by class-and-subclasses (isA).</details>
 <details><summary><code>get_script_source</code></summary>Read the source of a Script, LocalScript, or ModuleScript.</details>
 <details><summary><code>grep_scripts</code></summary>Search script sources for a substring; returns path, line number, and line.</details>
 <details><summary><code>get_output_log</code></summary>Recent Studio Output entries (message, type, timestamp).</details>

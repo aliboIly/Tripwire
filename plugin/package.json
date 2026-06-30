@@ -5,7 +5,8 @@
   "description": "Tripwire Studio plugin (roblox-ts, compiled to Luau). Long-polls the Tripwire MCP bridge and runs data-model and playtest actions. Distributed as a .rbxmx rather than via npm.",
   "scripts": {
     "build": "rbxtsc",
-    "watch": "rbxtsc -w"
+    "watch": "rbxtsc -w",
+    "test": "lune run test/read.test.luau"
   },
   "keywords": [],
   "author": "",

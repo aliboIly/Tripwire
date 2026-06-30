@@ -51,6 +51,9 @@ jobs:
         run: |
           npm ci
           npx rbxtsc
+      - name: Test plugin handlers (Lune runs the compiled handlers on a real DataModel)
+        working-directory: plugin
+        run: npm test
       - name: Build rbxmx
         working-directory: plugin
         run: rojo build --output Tripwire.rbxmx

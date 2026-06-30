@@ -62,6 +62,53 @@ function readAttributes(instance: Instance): Record<string, unknown> {
 	return out;
 }
 
+// Luau has no runtime property reflection, so we read a curated set of common engine
+// properties and keep whichever ones the instance actually has (reading a property a
+// class does not define errors, which the pcall swallows). This is intentionally a
+// common set, not exhaustive, so an agent can read back what it just set without
+// promising every property of every class.
+const COMMON_PROPERTIES = [
+	"Position",
+	"Size",
+	"CFrame",
+	"Orientation",
+	"Anchored",
+	"CanCollide",
+	"CanTouch",
+	"Transparency",
+	"Reflectance",
+	"Color",
+	"Material",
+	"CastShadow",
+	"CollisionGroup",
+	"Visible",
+	"BackgroundColor3",
+	"BackgroundTransparency",
+	"ZIndex",
+	"Text",
+	"TextColor3",
+	"Enabled",
+	"Value",
+	"Health",
+	"MaxHealth",
+	"WalkSpeed",
+	"Brightness",
+	"Range",
+	"Locked",
+	"Archivable",
+];
+
+function readProperties(instance: Instance): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const name of COMMON_PROPERTIES) {
+		const [ok, value] = pcall(() => (instance as unknown as Record<string, unknown>)[name]);
+		if (!ok || value === undefined) continue;
+		const primitive = typeIs(value, "string") || typeIs(value, "number") || typeIs(value, "boolean");
+		out[name] = primitive ? value : tostring(value);
+	}
+	return out;
+}
+
 function notFound(path: string | undefined): CommandResult {
 	return { ok: false, error: `no instance at path: ${path ?? "game"}` };
 }
@@ -110,12 +157,13 @@ export function handleRead(cmd: BridgeCommand): CommandResult | undefined {
 				className: instance.ClassName,
 				fullName: instance.GetFullName(),
 				attributes: readAttributes(instance),
+				properties: readProperties(instance),
 			},
 		};
 	}
 
 	if (cmd.type === "search_objects") {
-		const p = cmd.payload as { query: string; path?: string; className?: string; limit?: number };
+		const p = cmd.payload as { query: string; path?: string; className?: string; isA?: string; limit?: number };
 		const root = resolveInstance(p.path);
 		if (root === undefined) return notFound(p.path);
 		const limit = clampMatchLimit(p.limit);
@@ -123,6 +171,7 @@ export function handleRead(cmd: BridgeCommand): CommandResult | undefined {
 		for (const descendant of root.GetDescendants()) {
 			if (matches.size() >= limit) break;
 			if (p.className !== undefined && descendant.ClassName !== p.className) continue;
+			if (p.isA !== undefined && !descendant.IsA(p.isA as keyof Instances)) continue;
 			if (!containsIgnoreCase(descendant.Name, p.query)) continue;
 			matches.push({ name: descendant.Name, className: descendant.ClassName, path: descendant.GetFullName() });
 		}
@@ -135,6 +184,7 @@ export function handleRead(cmd: BridgeCommand): CommandResult | undefined {
 			value: string | number | boolean;
 			path?: string;
 			className?: string;
+			isA?: string;
 			limit?: number;
 		};
 		const root = resolveInstance(p.path);
@@ -144,6 +194,7 @@ export function handleRead(cmd: BridgeCommand): CommandResult | undefined {
 		for (const descendant of root.GetDescendants()) {
 			if (matches.size() >= limit) break;
 			if (p.className !== undefined && descendant.ClassName !== p.className) continue;
+			if (p.isA !== undefined && !descendant.IsA(p.isA as keyof Instances)) continue;
 			// Reading an arbitrary property by name can error on some instances, so pcall.
 			const [ok, readValue] = pcall(() => (descendant as unknown as Record<string, unknown>)[p.property]);
 			if (!ok) continue;
