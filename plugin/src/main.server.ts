@@ -11,6 +11,7 @@ import { handleEdit } from "edit";
 import { handlePlaytest, sweepRunners } from "playtest";
 import { handleRead } from "read";
 import { handleScripts } from "scripts";
+import { handleSpatial } from "spatial";
 import { handleStudio } from "studio";
 
 const BRIDGE = "http://127.0.0.1:44331";
@@ -42,7 +43,8 @@ function dispatch(cmd: BridgeCommand): CommandResult {
 		handleStudio(cmd) ??
 		handleEdit(cmd) ??
 		handlePlaytest(cmd) ??
-		handleBackdoor(cmd);
+		handleBackdoor(cmd) ??
+		handleSpatial(cmd);
 	if (handled !== undefined) return handled;
 	return { ok: false, error: `unknown command: ${cmd.type}` };
 }
