@@ -1,6 +1,6 @@
 [package]
 name = "tripwire-server"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 description = "Tripwire MCP server: drives Roblox Studio and Open Cloud for an MCP client"
 license = "MIT"
