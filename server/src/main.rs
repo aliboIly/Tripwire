@@ -261,6 +261,28 @@ struct ClassInfoArgs {
 }
 
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
+struct Vec3Arg {
+    x: f64,
+    y: f64,
+    z: f64,
+}
+
+#[derive(Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct RaycastArgs {
+    /// World position the ray starts from.
+    origin: Vec3Arg,
+    /// World direction to cast. Its length is the ray distance unless maxDistance is set.
+    direction: Vec3Arg,
+    /// Cast this many studs along the direction instead of using its length.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max_distance: Option<f64>,
+    /// Exclude this instance and its descendants from the ray, for example the character.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ignore_path: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct CreateInstanceArgs {
     class_name: String,
@@ -822,6 +844,42 @@ impl Tripwire {
                 Err(e) => text(format!("Error: {e}")),
             },
         )
+    }
+
+    #[tool(
+        description = "Cast a ray through the world and report the first hit: instance, position, surface normal, material, and distance, or no hit. Give an origin and a direction (its length is the ray distance, or set maxDistance). Optionally exclude an instance subtree (for example the character). Read-only."
+    )]
+    async fn raycast(
+        &self,
+        Parameters(a): Parameters<RaycastArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self
+            .relay("raycast", a, Role::Plugin, DEFAULT_TIMEOUT)
+            .await)
+    }
+
+    #[tool(
+        description = "Report the world-space bounding box (center and size) of a Model or a BasePart at a path. Useful for sizing and placing things. Read-only."
+    )]
+    async fn get_bounding_box(
+        &self,
+        Parameters(a): Parameters<PathArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self
+            .relay("get_bounding_box", a, Role::Plugin, DEFAULT_TIMEOUT)
+            .await)
+    }
+
+    #[tool(
+        description = "List the SpawnLocations under a path (default the whole game): position, whether each is enabled, and whether it is neutral. Read-only."
+    )]
+    async fn find_spawns(
+        &self,
+        Parameters(a): Parameters<PathArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(self
+            .relay("find_spawns", a, Role::Plugin, DEFAULT_TIMEOUT)
+            .await)
     }
 
     // --- edit (one undo step each) ---

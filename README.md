@@ -243,6 +243,11 @@ returns Roblox's own error if a scope is missing, so you can add scopes as you g
 <details><summary><code>get_selection</code></summary>The instances currently selected in Studio.</details>
 <details><summary><code>get_class_info</code></summary>Look up a Roblox class's members (properties, methods, events) with their types, inherited members folded in. Answered from a bundled API reflection dump, so it needs no Studio and no key.</details>
 
+### Spatial (read-only)
+<details><summary><code>raycast</code></summary>Cast a ray and report the first hit (instance, position, normal, material, distance) or no hit, with an optional excluded subtree.</details>
+<details><summary><code>get_bounding_box</code></summary>The world-space bounding box (center and size) of a Model or BasePart.</details>
+<details><summary><code>find_spawns</code></summary>List the SpawnLocations under a path: position, whether each is enabled, and whether it is neutral.</details>
+
 ### Edit (each is one undo step)
 <details><summary><code>create_instance</code></summary>Create an instance of a class with an optional name and initial properties.</details>
 <details><summary><code>delete_instance</code></summary>Destroy an instance and its descendants.</details>
