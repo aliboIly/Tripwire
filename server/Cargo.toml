@@ -4,6 +4,11 @@ version = "0.2.3"
 edition = "2021"
 description = "Tripwire MCP server: drives Roblox Studio and Open Cloud for an MCP client"
 license = "MIT"
+authors = ["alibolly <ali@alibolly.com>"]
+repository = "https://github.com/aliboIly/Tripwire"
+homepage = "https://github.com/aliboIly/Tripwire"
+keywords = ["roblox", "mcp", "open-cloud", "luau", "ai-agent"]
+categories = ["game-development", "development-tools::testing", "api-bindings", "command-line-utilities"]
 
 [[bin]]
 name = "tripwire-server"

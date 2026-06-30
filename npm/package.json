@@ -15,10 +15,19 @@
   ],
   "keywords": [
     "roblox",
+    "roblox-studio",
     "mcp",
+    "mcp-server",
     "model-context-protocol",
-    "studio",
-    "open-cloud"
+    "open-cloud",
+    "luau",
+    "ai-agent",
+    "claude",
+    "claude-code",
+    "codex",
+    "gemini",
+    "testing",
+    "security"
   ],
   "homepage": "https://github.com/aliboIly/Tripwire",
   "repository": {
