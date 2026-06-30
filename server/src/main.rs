@@ -33,6 +33,8 @@ use bridge::{Bridge, BridgeResult, Role, DEFAULT_TIMEOUT};
 
 const WRITE_BATCH_TIMEOUT: Duration = Duration::from_secs(60);
 const INPUT_TIMEOUT: Duration = Duration::from_secs(40);
+// `review --strict` exits with this when the reviewer found something, so CI can gate on it.
+const REVIEW_FINDINGS_EXIT_CODE: i32 = 2;
 
 fn text(body: impl Into<String>) -> CallToolResult {
     CallToolResult::success(vec![Content::text(body.into())])
@@ -1586,13 +1588,31 @@ fn load_env() {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // One-shot CLI mode for CI: `tripwire-server review [path]` prints the security
-    // report to stdout and exits, instead of starting the MCP server.
+    // One-shot CLI mode for CI: `tripwire-server review [path] [--strict] [--json]` prints
+    // the security report and exits, instead of starting the MCP server. --json emits a
+    // machine-readable report; --strict exits non-zero when there are findings so a CI
+    // step can fail the build, not only comment.
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("review") {
-        let path = args.get(2).map(String::as_str).unwrap_or("sample-game/src");
+        let strict = args.iter().any(|a| a == "--strict");
+        let json = args.iter().any(|a| a == "--json");
+        let path = args
+            .iter()
+            .skip(2)
+            .find(|a| !a.starts_with("--"))
+            .map(String::as_str)
+            .unwrap_or("sample-game/src");
         match security::review(path) {
-            Ok(report) => println!("{}", security::format_report(&report)),
+            Ok(report) => {
+                if json {
+                    println!("{}", security::format_report_json(&report));
+                } else {
+                    println!("{}", security::format_report(&report));
+                }
+                if strict && !report.findings.is_empty() {
+                    std::process::exit(REVIEW_FINDINGS_EXIT_CODE);
+                }
+            }
             Err(e) => {
                 eprintln!("{e}");
                 std::process::exit(1);
