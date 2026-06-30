@@ -200,6 +200,9 @@ struct SearchObjectsArgs {
     query: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     class_name: Option<String>,
+    /// Match a class and its subclasses via Instance:IsA, for example "BasePart" or "GuiObject".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    is_a: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -215,6 +218,9 @@ struct SearchByPropertyArgs {
     value: Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     class_name: Option<String>,
+    /// Match a class and its subclasses via Instance:IsA, for example "BasePart".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    is_a: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -721,7 +727,7 @@ impl Tripwire {
     }
 
     #[tool(
-        description = "Read an instance's name, className, full path, and attributes. Read-only."
+        description = "Read an instance's name, className, full path, attributes, and a curated set of common engine properties (Position, Size, Color, Material, Anchored, Transparency, Text, and so on, whichever the class has). Read-only."
     )]
     async fn get_instance_properties(
         &self,
@@ -733,7 +739,7 @@ impl Tripwire {
     }
 
     #[tool(
-        description = "Find instances whose name contains a query, optionally filtered by className. Read-only."
+        description = "Find instances whose name contains a query, optionally filtered by exact className or by class-and-subclasses with isA (for example isA \"BasePart\" matches Part, WedgePart, MeshPart). Read-only."
     )]
     async fn search_objects(
         &self,
@@ -745,7 +751,7 @@ impl Tripwire {
     }
 
     #[tool(
-        description = "Find instances whose property equals a primitive value, optionally filtered by className. Read-only."
+        description = "Find instances whose property equals a primitive value, optionally filtered by exact className or by class-and-subclasses with isA. Read-only."
     )]
     async fn search_by_property(
         &self,
