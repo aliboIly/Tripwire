@@ -6,6 +6,7 @@
 import { HttpService } from "@rbxts/services";
 import { BridgeCommand, CommandResult, PROTOCOL_VERSION, TRIPWIRE_VERSION } from "protocol";
 import { INSTANCE_ID, installId } from "identity";
+import { handleBackdoor } from "backdoor";
 import { handleEdit } from "edit";
 import { handlePlaytest, sweepRunners } from "playtest";
 import { handleRead } from "read";
@@ -36,7 +37,12 @@ function dispatch(cmd: BridgeCommand): CommandResult {
 		return { ok: true, data: { place: game.Name, payload: cmd.payload } };
 	}
 	const handled =
-		handleRead(cmd) ?? handleScripts(cmd) ?? handleStudio(cmd) ?? handleEdit(cmd) ?? handlePlaytest(cmd);
+		handleRead(cmd) ??
+		handleScripts(cmd) ??
+		handleStudio(cmd) ??
+		handleEdit(cmd) ??
+		handlePlaytest(cmd) ??
+		handleBackdoor(cmd);
 	if (handled !== undefined) return handled;
 	return { ok: false, error: `unknown command: ${cmd.type}` };
 }

@@ -8,7 +8,7 @@ import { clampMatchLimit, containsIgnoreCase, resolveInstance } from "read";
 const MAX_LINE_LENGTH = 240;
 
 // Source lives on the concrete script classes, not the LuaSourceContainer base.
-function asScript(instance: Instance): Script | LocalScript | ModuleScript | undefined {
+export function asScript(instance: Instance): Script | LocalScript | ModuleScript | undefined {
 	if (instance.IsA("Script") || instance.IsA("LocalScript") || instance.IsA("ModuleScript")) return instance;
 	return undefined;
 }
