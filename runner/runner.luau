@@ -211,12 +211,69 @@ local function doCharacterNavigation(p)
 	return true, { reached = reached, position = { position.X, position.Y, position.Z } }
 end
 
-local function collectLogs()
-	local entries = {}
-	for _, entry in ipairs(LogService:GetLogHistory()) do
-		table.insert(entries, { message = entry.message, type = entry.messageType.Name, timestamp = entry.timestamp })
+-- ===== log capture (both peers) =====
+--
+-- The output pump used to call LogService:GetLogHistory() on every get_playtest_output
+-- and ship the WHOLE history each time, so a long session grew the transfer without
+-- bound until it looked hung and only a Studio restart recovered. Instead we stream new
+-- lines through LogService.MessageOut into a bounded ring buffer, tag each with a
+-- monotonic seq, and serve only entries past the caller's cursor. Memory and payload are
+-- bounded regardless of session length, and repeated reads are O(new lines).
+
+local LOG_BUFFER_MAX = 2000
+local LOG_BUFFER_SLACK = 500 -- trim only this far over the cap, so trimming is amortized
+local logEntries = {} -- array of { seq, message, type, timestamp }
+local logSeq = 0
+local logCaptureStarted = false
+
+local function appendLog(message, messageType, timestamp)
+	logSeq = logSeq + 1
+	logEntries[#logEntries + 1] = { seq = logSeq, message = message, type = messageType, timestamp = timestamp }
+	if #logEntries > LOG_BUFFER_MAX + LOG_BUFFER_SLACK then
+		-- Drop the oldest, keeping the last LOG_BUFFER_MAX, in one pass.
+		local kept = {}
+		for i = #logEntries - LOG_BUFFER_MAX + 1, #logEntries do
+			kept[#kept + 1] = logEntries[i]
+		end
+		logEntries = kept
 	end
-	return entries
+end
+
+-- Entries with seq greater than `since`, plus the current high-water seq to read from
+-- next. A cursor from a previous session (larger than logSeq) is treated as "from the
+-- start" so a stale cursor returns the current buffer instead of nothing.
+local function logsSince(since)
+	since = since or 0
+	if since > logSeq then
+		since = 0
+	end
+	local out = {}
+	for _, entry in ipairs(logEntries) do
+		if entry.seq > since then
+			out[#out + 1] = { message = entry.message, type = entry.type, timestamp = entry.timestamp }
+		end
+	end
+	return out, logSeq
+end
+
+local function resetLogs()
+	logEntries = {}
+	logSeq = 0
+end
+
+-- Backfill once from history, then stream new lines. MessageOut only fires for messages
+-- emitted after we connect, so the one-time GetLogHistory catches what is already there.
+local function startLogCapture()
+	if logCaptureStarted then
+		return
+	end
+	logCaptureStarted = true
+	for _, entry in ipairs(LogService:GetLogHistory()) do
+		appendLog(entry.message, entry.messageType.Name, entry.timestamp)
+	end
+	LogService.MessageOut:Connect(function(message, messageType)
+		appendLog(message, messageType.Name, os.time())
+	end)
 end
 
 -- ===== client peer: no HTTP; listens on the relay, runs commands, replies =====
@@ -225,30 +282,48 @@ local CLIENT_HANDLERS = {
 	mouse_input = doMouseInput,
 	keyboard_input = doKeyboardInput,
 	character_navigation = doCharacterNavigation,
-	get_logs = function()
-		return true, { entries = collectLogs() }
+	get_logs = function(payload)
+		local entries, cursor = logsSince(payload and payload.since)
+		return true, { entries = entries, cursor = cursor }
+	end,
+	reset_output = function()
+		resetLogs()
+		return true, { reset = true }
 	end,
 }
 
 local function runClient()
+	startLogCapture()
 	local relay = ReplicatedStorage:WaitForChild(RELAY_NAME, 30)
 	if not relay then
 		warn(LOG .. " relay event never appeared; client input is unavailable")
 		return
 	end
 	relay.OnClientEvent:Connect(function(cmd)
+		local response
 		local fn = CLIENT_HANDLERS[cmd.type]
 		if not fn then
-			relay:FireServer({ id = cmd.id, ok = false, error = "unknown client command: " .. tostring(cmd.type) })
-			return
-		end
-		local ran, okOrErr, dataOrErr = pcall(fn, cmd.payload)
-		if not ran then
-			relay:FireServer({ id = cmd.id, ok = false, error = "client error: " .. tostring(okOrErr) })
-		elseif okOrErr then
-			relay:FireServer({ id = cmd.id, ok = true, data = dataOrErr })
+			response = { id = cmd.id, ok = false, error = "unknown client command: " .. tostring(cmd.type) }
 		else
-			relay:FireServer({ id = cmd.id, ok = false, error = dataOrErr })
+			local ran, okOrErr, dataOrErr = pcall(fn, cmd.payload)
+			if not ran then
+				response = { id = cmd.id, ok = false, error = "client error: " .. tostring(okOrErr) }
+			elseif okOrErr then
+				response = { id = cmd.id, ok = true, data = dataOrErr }
+			else
+				response = { id = cmd.id, ok = false, error = dataOrErr }
+			end
+		end
+		-- pcall the send: a too-large or unserializable payload must not throw out of this
+		-- handler, which would drop the reply and time out every later call. Bounded logs
+		-- make this unlikely now, but the guard keeps one bad reply from wedging the pump.
+		local sent = pcall(function()
+			relay:FireServer(response)
+		end)
+		if not sent then
+			pcall(function()
+				relay:FireServer({ id = cmd.id, ok = false, error = "reply could not be relayed (payload too large?)" })
+			end)
 		end
 	end)
 	relay:FireServer({ ready = true }) -- tell the server the client peer is listening
@@ -355,14 +430,31 @@ local function handle(cmd)
 		local ok, dataOrError = relayToClient(cmd)
 		reply(cmd, ok, dataOrError)
 	elseif cmd.type == "get_logs" then
-		-- Server logs plus the client's, fetched over the relay. The two arrays are
-		-- merged and deduped on the server side (Node), not here.
-		local clientEntries = {}
-		local cok, cdata = relayToClient({ id = cmd.id, type = "get_logs", payload = {} })
-		if cok and type(cdata) == "table" and cdata.entries then
-			clientEntries = cdata.entries
+		-- Server logs since the caller's cursor, plus the client's (over the relay). Each
+		-- peer serves only entries past its own cursor; the merge and dedup happen on the
+		-- server side (Rust), not here.
+		local payload = cmd.payload or {}
+		local serverEntries, serverCursor = logsSince(payload.sinceServer)
+		local clientEntries, clientCursor = {}, 0
+		local cok, cdata = relayToClient({ id = cmd.id, type = "get_logs", payload = { since = payload.sinceClient } })
+		if cok and type(cdata) == "table" then
+			if cdata.entries then
+				clientEntries = cdata.entries
+			end
+			if cdata.cursor then
+				clientCursor = cdata.cursor
+			end
 		end
-		reply(cmd, true, { serverEntries = collectLogs(), clientEntries = clientEntries })
+		reply(cmd, true, {
+			serverEntries = serverEntries,
+			serverCursor = serverCursor,
+			clientEntries = clientEntries,
+			clientCursor = clientCursor,
+		})
+	elseif cmd.type == "reset_output" then
+		resetLogs()
+		relayToClient({ id = cmd.id, type = "reset_output", payload = {} }) -- best-effort client clear
+		reply(cmd, true, { reset = true })
 	elseif cmd.type == "eval" then
 		local ok, dataOrError = evalCode(cmd.payload and cmd.payload.code)
 		reply(cmd, ok, dataOrError)
@@ -392,6 +484,7 @@ local function announce()
 end
 
 local function runServer()
+	startLogCapture()
 	setupRelay() -- create the relay before announcing, so the client can find it
 	if not announce() then
 		return
@@ -435,4 +528,11 @@ end
 
 -- Exposed for the headless test. A Script ignores a returned value, so this is inert in
 -- a real injection; a Lune `require` uses it to reach the handlers.
-return { evalCode = evalCode, serialize = serialize, handle = handle }
+return {
+	evalCode = evalCode,
+	serialize = serialize,
+	handle = handle,
+	appendLog = appendLog,
+	logsSince = logsSince,
+	resetLogs = resetLogs,
+}

@@ -266,7 +266,8 @@ returns Roblox's own error if a scope is missing, so you can add scopes as you g
 <details><summary><code>simulate_mouse_input</code></summary>Click or move the mouse at screen coordinates during an F5 playtest.</details>
 <details><summary><code>simulate_keyboard_input</code></summary>Press a key (tap/press/release) or type text during an F5 playtest.</details>
 <details><summary><code>character_navigation</code></summary>Walk the local character toward a world position; reports whether it reached the goal.</details>
-<details><summary><code>get_playtest_output</code></summary>The running playtest's output log, aggregated across the server and client peers.</details>
+<details><summary><code>get_playtest_output</code></summary>The running playtest's output log, aggregated across the server and client peers. Pass the <code>cursor</code> from the previous call as <code>since</code> to get only new lines; the buffer is bounded so long sessions do not freeze it.</details>
+<details><summary><code>reset_playtest_output</code></summary>Clear the playtest's output buffers so the next read starts fresh, without restarting Studio.</details>
 <details><summary><code>run_luau_live</code></summary>Evaluate Luau in the live F5 playtest server and return the result, so you can inspect the running game (a Humanoid's state, an NPC's position, a path's waypoints) without adding a print and replaying. Needs an active playtest and ServerScriptService.LoadStringEnabled on in the test place. Distinct from run_luau, which is headless against the published place.</details>
 
 ### Tests and headless execution (Open Cloud)

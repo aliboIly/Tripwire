@@ -84,27 +84,53 @@ pub async fn run_luau_live(bridge: &Bridge, code: &str) -> Result<BridgeResult, 
         .await
 }
 
-// Asks the server runner for the output log. It returns its own entries plus the
-// client's (over the relay) as two arrays; the merge and dedup happen here.
-pub async fn get_playtest_output(bridge: &Bridge) -> Result<BridgeResult, String> {
+// Asks the server runner for output newer than the caller's per-peer cursor. The runner
+// keeps a bounded ring buffer fed by LogService.MessageOut, so each call transfers only
+// new lines instead of the whole (unbounded) history that used to make this freeze.
+pub async fn get_playtest_output(
+    bridge: &Bridge,
+    since_server: i64,
+    since_client: i64,
+) -> Result<BridgeResult, String> {
     let result = bridge
-        .send("get_logs", json!({}), Role::Server, LOGS_TIMEOUT)
+        .send(
+            "get_logs",
+            json!({ "sinceServer": since_server, "sinceClient": since_client }),
+            Role::Server,
+            LOGS_TIMEOUT,
+        )
         .await?;
     if !result.ok {
         return Ok(result);
     }
-    let server_entries = result
-        .data
-        .get("serverEntries")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let client_entries = result
-        .data
-        .get("clientEntries")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    Ok(BridgeResult {
+        ok: true,
+        data: merge_output(&result.data),
+        error: None,
+    })
+}
+
+// Clears the runner's log buffers (both peers) so a fresh read starts from empty, without
+// restarting Studio.
+pub async fn reset_playtest_output(bridge: &Bridge) -> Result<BridgeResult, String> {
+    bridge
+        .send("reset_output", json!({}), Role::Server, STOP_TIMEOUT)
+        .await
+}
+
+// Merges the two peers' entries (dedup by timestamp+message, sort by time) and carries
+// the per-peer cursors so the next call can ask for only newer lines.
+fn merge_output(data: &Value) -> Value {
+    let server_entries = array_field(data, "serverEntries");
+    let client_entries = array_field(data, "clientEntries");
+    let server_cursor = data
+        .get("serverCursor")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let client_cursor = data
+        .get("clientCursor")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
 
     let mut entries: Vec<Value> = Vec::new();
     let mut server_keys = std::collections::HashSet::new();
@@ -123,11 +149,17 @@ pub async fn get_playtest_output(bridge: &Bridge) -> Result<BridgeResult, String
         let tb = b.get("timestamp").and_then(Value::as_f64).unwrap_or(0.0);
         ta.partial_cmp(&tb).unwrap_or(std::cmp::Ordering::Equal)
     });
-    Ok(BridgeResult {
-        ok: true,
-        data: json!({ "entries": entries }),
-        error: None,
+    json!({
+        "entries": entries,
+        "cursor": { "server": server_cursor, "client": client_cursor },
     })
+}
+
+fn array_field(data: &Value, key: &str) -> Vec<Value> {
+    data.get(key)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
 }
 
 fn entry_key(entry: &Value) -> String {
@@ -145,4 +177,44 @@ fn tagged(entry: &Value, peer: &str) -> Value {
         map.insert("peer".into(), json!(peer));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn merge_dedups_sorts_and_carries_cursor() {
+        let data = json!({
+            "serverEntries": [
+                { "message": "a", "type": "Output", "timestamp": 2.0 },
+                { "message": "shared", "type": "Output", "timestamp": 1.0 },
+            ],
+            "clientEntries": [
+                { "message": "shared", "type": "Output", "timestamp": 1.0 },
+                { "message": "c", "type": "Output", "timestamp": 3.0 },
+            ],
+            "serverCursor": 7,
+            "clientCursor": 4,
+        });
+        let out = merge_output(&data);
+        let entries = out["entries"].as_array().unwrap();
+        // The shared line appears once; sorted by timestamp: shared(1), a(2), c(3).
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0]["message"], "shared");
+        assert_eq!(entries[1]["message"], "a");
+        assert_eq!(entries[2]["message"], "c");
+        // Server wins the dedup, so the shared line is tagged server.
+        assert_eq!(entries[0]["peer"], "server");
+        assert_eq!(out["cursor"]["server"], 7);
+        assert_eq!(out["cursor"]["client"], 4);
+    }
+
+    #[test]
+    fn merge_handles_missing_fields() {
+        let out = merge_output(&json!({}));
+        assert_eq!(out["entries"].as_array().unwrap().len(), 0);
+        assert_eq!(out["cursor"]["server"], 0);
+        assert_eq!(out["cursor"]["client"], 0);
+    }
 }
