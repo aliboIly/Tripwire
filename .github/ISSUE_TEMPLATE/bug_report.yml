@@ -51,7 +51,7 @@ body:
     attributes:
       label: Tripwire server version
       description: From the binary, or the npx version you ran.
-      placeholder: 0.2.3
+      placeholder: 0.2.5
     validations:
       required: true
   - type: input
@@ -59,7 +59,7 @@ body:
     attributes:
       label: Studio plugin version (if the Studio path failed)
       description: The [Tripwire vX.Y.Z] prefix in the Studio Output.
-      placeholder: 0.2.3
+      placeholder: 0.2.5
     validations:
       required: false
   - type: input

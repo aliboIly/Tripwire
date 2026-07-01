@@ -3,7 +3,7 @@
   "name": "io.github.aliboIly/tripwire",
   "title": "Tripwire",
   "description": "MCP for Roblox Studio and Open Cloud: drive Studio, run headless tests, and review game security.",
-  "version": "0.2.3",
+  "version": "0.2.5",
   "repository": {
     "url": "https://github.com/aliboIly/Tripwire",
     "source": "github"
@@ -13,7 +13,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "tripwire-roblox",
-      "version": "0.2.3",
+      "version": "0.2.5",
       "runtimeHint": "npx",
       "transport": { "type": "stdio" },
       "environmentVariables": [
