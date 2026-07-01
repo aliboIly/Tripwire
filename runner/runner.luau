@@ -26,12 +26,105 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local BRIDGE = "http://127.0.0.1:{{PORT}}"
 local PROTOCOL_VERSION = {{PROTOCOL_VERSION}}
 local INSTANCE_ID = "{{INSTANCE_ID}}"
-local ROLE = RunService:IsServer() and "server" or "client"
+-- pcall so the headless eval test can load this file under a runtime without IsServer;
+-- in a real playtest IsServer always resolves, so ROLE is correct there.
+local roleOk, isServer = pcall(function()
+	return RunService:IsServer()
+end)
+local ROLE = (roleOk and isServer) and "server" or "client"
 local LOG = "[Tripwire runner v{{VERSION}}]"
 
 local RELAY_NAME = "TripwireRelay"
 local RELAY_READY_TIMEOUT = 8 -- seconds to wait for the player + client peer to come up
 local RELAY_REPLY_TIMEOUT = 25 -- seconds to wait for the client's reply (covers WaitForChild Humanoid 10s + MoveTo ~8s)
+
+-- ===== live eval (server peer): run Luau against the running game =====
+--
+-- This is what lets an agent ask a runtime question directly (humanoid:GetState(), a
+-- path's waypoints, an NPC's position) instead of adding a print, rebuilding, syncing,
+-- and replaying. loadstring is gated by ServerScriptService.LoadStringEnabled, which
+-- defaults off and is NotScriptable, so nothing (plugin, script, or this runner) can
+-- flip it at runtime. The user turns it on by hand in the test place's Properties; eval
+-- returns a clear setup error when it is off, the same way the bridge reports a missing
+-- Allow HTTP Requests. It should stay off on a published place.
+
+local SERIALIZE_MAX_DEPTH = 5
+local SERIALIZE_MAX_ENTRIES = 250
+
+-- Convert an arbitrary Luau value into something JSONEncode can carry: primitives as-is,
+-- instances and datatypes as small tables, other tables recursively (depth/size capped,
+-- cycles broken), everything else as a readable string.
+local function serialize(value, depth, seen)
+	local kind = typeof(value)
+	if kind == "nil" or kind == "boolean" or kind == "number" or kind == "string" then
+		return value
+	elseif kind == "Instance" then
+		return { className = value.ClassName, path = value:GetFullName() }
+	elseif kind == "Vector3" then
+		return { x = value.X, y = value.Y, z = value.Z }
+	elseif kind == "Vector2" then
+		return { x = value.X, y = value.Y }
+	elseif kind == "CFrame" then
+		local p = value.Position
+		return { x = p.X, y = p.Y, z = p.Z }
+	elseif kind == "table" then
+		if depth >= SERIALIZE_MAX_DEPTH then
+			return "<max depth>"
+		end
+		if seen[value] then
+			return "<cycle>"
+		end
+		seen[value] = true
+		local out = {}
+		if #value > 0 then
+			-- Array-like: keep integer keys so JSONEncode emits a JSON array.
+			for i, item in ipairs(value) do
+				if i > SERIALIZE_MAX_ENTRIES then
+					out[i] = "<truncated>"
+					break
+				end
+				out[i] = serialize(item, depth + 1, seen)
+			end
+		else
+			local count = 0
+			for k, v in pairs(value) do
+				count = count + 1
+				if count > SERIALIZE_MAX_ENTRIES then
+					out["__truncated"] = true
+					break
+				end
+				out[tostring(k)] = serialize(v, depth + 1, seen)
+			end
+		end
+		seen[value] = nil
+		return out
+	end
+	return tostring(value)
+end
+
+-- Compile and run code against the live game, returning ok, dataOrError. A compile or
+-- runtime error comes back as a clear message, never a thrown error that kills the poll.
+local LOADSTRING_HINT = " (if loadstring is not available, enable ServerScriptService.LoadStringEnabled in the test place's Properties, and keep it off in production)"
+
+local function evalCode(code)
+	if type(code) ~= "string" or code == "" then
+		return false, "eval needs a non-empty 'code' string"
+	end
+	-- loadstring returns nil + message on a syntax error in Roblox, but throws under some
+	-- runtimes, so pcall covers both shapes.
+	local compiled, fnOrErr, syntaxErr = pcall(loadstring, code)
+	if not compiled then
+		return false, "could not compile: " .. tostring(fnOrErr) .. LOADSTRING_HINT
+	end
+	if type(fnOrErr) ~= "function" then
+		return false, "could not compile: " .. tostring(syntaxErr or fnOrErr) .. LOADSTRING_HINT
+	end
+	local ok, result = pcall(fnOrErr)
+	if not ok then
+		return false, "runtime error: " .. tostring(result)
+	end
+	return true, { result = serialize(result, 0, {}) }
+end
 
 -- ===== command execution (the input ones run on the client; each returns ok, dataOrError) =====
 
@@ -270,6 +363,9 @@ local function handle(cmd)
 			clientEntries = cdata.entries
 		end
 		reply(cmd, true, { serverEntries = collectLogs(), clientEntries = clientEntries })
+	elseif cmd.type == "eval" then
+		local ok, dataOrError = evalCode(cmd.payload and cmd.payload.code)
+		reply(cmd, ok, dataOrError)
 	else
 		reply(cmd, false, "unknown in-play command: " .. tostring(cmd.type))
 	end
@@ -327,8 +423,16 @@ local function runServer()
 	end
 end
 
-if ROLE == "client" then
-	task.spawn(runClient)
-else
-	task.spawn(runServer)
+-- _G.TRIPWIRE_RUNNER_TEST lets the headless test load this file and call the eval and
+-- serialize helpers without starting the poll loop. It is never set in a real injection.
+if not _G.TRIPWIRE_RUNNER_TEST then
+	if ROLE == "client" then
+		task.spawn(runClient)
+	else
+		task.spawn(runServer)
+	end
 end
+
+-- Exposed for the headless test. A Script ignores a returned value, so this is inert in
+-- a real injection; a Lune `require` uses it to reach the handlers.
+return { evalCode = evalCode, serialize = serialize, handle = handle }

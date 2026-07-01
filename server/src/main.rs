@@ -305,6 +305,13 @@ struct RaycastArgs {
 
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
+struct RunLuauLiveArgs {
+    /// Luau to evaluate in the live playtest server. `return <expr>` to get a value back.
+    code: String,
+}
+
+#[derive(Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 struct CreateInstanceArgs {
     class_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1080,6 +1087,18 @@ impl Tripwire {
     )]
     async fn get_playtest_output(&self) -> Result<CallToolResult, McpError> {
         Ok(as_text(playtest::get_playtest_output(&self.bridge).await))
+    }
+
+    #[tool(
+        description = "Evaluate Luau in the LIVE F5 playtest server and return the result, so you can inspect the running game (a Humanoid's state, an NPC's position, a path's waypoints) without adding a print and replaying. Use `return <expr>` to get a value. Needs an active playtest and ServerScriptService.LoadStringEnabled enabled in the test place. Distinct from run_luau, which runs headless via Open Cloud against the published place."
+    )]
+    async fn run_luau_live(
+        &self,
+        Parameters(a): Parameters<RunLuauLiveArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(as_text(
+            playtest::run_luau_live(&self.bridge, &a.code).await,
+        ))
     }
 
     // --- headless execution (Open Cloud) ---
