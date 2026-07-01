@@ -267,6 +267,7 @@ returns Roblox's own error if a scope is missing, so you can add scopes as you g
 <details><summary><code>simulate_keyboard_input</code></summary>Press a key (tap/press/release) or type text during an F5 playtest.</details>
 <details><summary><code>character_navigation</code></summary>Walk the local character toward a world position; reports whether it reached the goal.</details>
 <details><summary><code>get_playtest_output</code></summary>The running playtest's output log, aggregated across the server and client peers.</details>
+<details><summary><code>run_luau_live</code></summary>Evaluate Luau in the live F5 playtest server and return the result, so you can inspect the running game (a Humanoid's state, an NPC's position, a path's waypoints) without adding a print and replaying. Needs an active playtest and ServerScriptService.LoadStringEnabled on in the test place. Distinct from run_luau, which is headless against the published place.</details>
 
 ### Tests and headless execution (Open Cloud)
 <details><summary><code>run_luau</code></summary>Run a Luau script headlessly in the published place; returns the results and logs.</details>

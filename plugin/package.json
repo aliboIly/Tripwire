@@ -6,7 +6,7 @@
   "scripts": {
     "build": "rbxtsc",
     "watch": "rbxtsc -w",
-    "test": "lune run test/read.test.luau && lune run test/base64.test.luau"
+    "test": "lune run test/read.test.luau && lune run test/base64.test.luau && lune run test/runner.test.luau"
   },
   "keywords": [],
   "author": "",

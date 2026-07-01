@@ -13,6 +13,7 @@ use crate::bridge::{Bridge, BridgeResult, Role, DEFAULT_TIMEOUT, PROTOCOL_VERSIO
 const RUNNER_TEMPLATE: &str = include_str!("../../runner/runner.luau");
 const STOP_TIMEOUT: Duration = Duration::from_secs(15);
 const LOGS_TIMEOUT: Duration = Duration::from_secs(40);
+const EVAL_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn runner_source(port: u16) -> String {
     RUNNER_TEMPLATE
@@ -72,6 +73,15 @@ async fn request_stop(bridge: &Bridge, kind: &str) -> Result<BridgeResult, Strin
         }),
         Err(reason) => Err(reason),
     }
+}
+
+// Evaluates Luau in the live playtest server via the runner, so an agent can ask a
+// runtime question (a Humanoid's state, a path's waypoints) without adding a print and
+// replaying. Only reaches the server runner, so it errors cleanly when no playtest is up.
+pub async fn run_luau_live(bridge: &Bridge, code: &str) -> Result<BridgeResult, String> {
+    bridge
+        .send("eval", json!({ "code": code }), Role::Server, EVAL_TIMEOUT)
+        .await
 }
 
 // Asks the server runner for the output log. It returns its own entries plus the
