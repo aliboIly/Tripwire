@@ -310,6 +310,23 @@ struct RunLuauLiveArgs {
     code: String,
 }
 
+#[derive(Deserialize, Serialize, schemars::JsonSchema, Default)]
+#[serde(rename_all = "camelCase")]
+struct OutputCursor {
+    #[serde(default)]
+    server: i64,
+    #[serde(default)]
+    client: i64,
+}
+
+#[derive(Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct PlaytestOutputArgs {
+    /// The `cursor` from the previous call, to fetch only newer lines. Omit for all buffered output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    since: Option<OutputCursor>,
+}
+
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct CreateInstanceArgs {
@@ -1083,10 +1100,23 @@ impl Tripwire {
     }
 
     #[tool(
-        description = "Return the running playtest's output log, aggregated across the server and client peers and tagged by peer."
+        description = "Return the running playtest's output log, aggregated across the server and client peers and tagged by peer. Pass the `cursor` from the previous call as `since` to get only new lines; the buffer is bounded, so this no longer grows without limit. Use reset_playtest_output to clear it."
     )]
-    async fn get_playtest_output(&self) -> Result<CallToolResult, McpError> {
-        Ok(as_text(playtest::get_playtest_output(&self.bridge).await))
+    async fn get_playtest_output(
+        &self,
+        Parameters(a): Parameters<PlaytestOutputArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let since = a.since.unwrap_or_default();
+        Ok(as_text(
+            playtest::get_playtest_output(&self.bridge, since.server, since.client).await,
+        ))
+    }
+
+    #[tool(
+        description = "Clear the running playtest's output buffers (server and client) so the next get_playtest_output starts fresh, without restarting Studio."
+    )]
+    async fn reset_playtest_output(&self) -> Result<CallToolResult, McpError> {
+        Ok(as_text(playtest::reset_playtest_output(&self.bridge).await))
     }
 
     #[tool(

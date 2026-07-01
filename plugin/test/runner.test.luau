@@ -84,6 +84,38 @@ do
 	check("serialize breaks cycles without erroring", ok)
 end
 
+-- Output buffer: bounded ring + since-cursor + reset (the get_playtest_output freeze fix).
+do
+	runner.resetLogs()
+	runner.appendLog("one", "Output", 1)
+	runner.appendLog("two", "Output", 2)
+	runner.appendLog("three", "Output", 3)
+
+	local all, cursor = runner.logsSince(0)
+	check("logsSince(0) returns all buffered with a cursor", #all == 3 and cursor == 3)
+
+	local rest, cursor2 = runner.logsSince(2)
+	check("logsSince(cursor) returns only newer lines", #rest == 1 and rest[1].message == "three" and cursor2 == 3)
+
+	local stale = runner.logsSince(999999)
+	check("a stale cursor falls back to the full buffer", #stale == 3)
+
+	runner.resetLogs()
+	local empty = runner.logsSince(0)
+	check("resetLogs clears the buffer", #empty == 0)
+end
+
+do
+	-- Flood past the cap and confirm the buffer stays bounded (no unbounded growth).
+	runner.resetLogs()
+	for i = 1, 3000 do
+		runner.appendLog("line " .. i, "Output", i)
+	end
+	local kept = runner.logsSince(0)
+	check("buffer stays bounded under a flood", #kept <= 2500)
+	check("the newest lines are kept", kept[#kept].message == "line 3000")
+end
+
 fs.removeFile("test/.runner_under_test.luau")
 
 if failures > 0 then
