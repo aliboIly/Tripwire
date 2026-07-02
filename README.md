@@ -34,7 +34,7 @@ Tripwire is for Roblox developers who drive Studio through an AI coding agent.
 
 1. Wire the server into your MCP client (one command or a small config block, see [Install](#install) below).
 2. Install the Studio plugin so the Studio tools can reach Studio (see the plugin step in Install).
-3. Open your place in Studio, click the Tripwire toolbar button, and turn on Game Settings > Security > Allow HTTP Requests. The Output prints `[Tripwire v...] connected`.
+3. Open your place in Studio, turn on Game Settings > Security > Allow HTTP Requests, then click the Tripwire toolbar button and press Connect in the panel. The panel shows Connected and the Output prints `[Tripwire v...] connected`.
 4. Ask your agent to run `studio_status`. A connected Studio confirms the bridge works.
 5. Optional: add an Open Cloud key for the headless test, asset, and Open Cloud tools (see Open Cloud setup).
 
@@ -152,8 +152,9 @@ rojo build --output Tripwire.rbxmx
 cp Tripwire.rbxmx ~/Documents/Roblox/Plugins/   # macOS; Windows: %LOCALAPPDATA%\Roblox\Plugins
 ```
 
-Restart Studio, click the **Tripwire** toolbar button, and enable **Game Settings > Security >
-Allow HTTP Requests**. The Output shows `[Tripwire v...] connected`.
+Restart Studio, enable **Game Settings > Security > Allow HTTP Requests**, then click the
+**Tripwire** toolbar button and press **Connect** in the panel. The panel shows Connected and
+the Output prints `[Tripwire v...] connected`.
 
 </details>
 
@@ -351,11 +352,11 @@ Tripwire is maintained by one person in spare time. Issues and pull requests usu
 
 ## Troubleshooting
 
-**The Studio tools time out or report no connected Studio.** The plugin is not running. Install `Tripwire.rbxmx`, restart Studio, click the Tripwire toolbar button, and check the Output for `[Tripwire v...] connected`.
+**The Studio tools time out or report no connected Studio.** The plugin is not connected. Install `Tripwire.rbxmx`, restart Studio, click the Tripwire toolbar button, and press Connect in the panel. The panel status and the Output line `[Tripwire v...] connected` both confirm it.
 
 **The plugin reports that HTTP is blocked.** Turn on Game Settings > Security > Allow HTTP Requests on the open place. This is the most common setup failure. Studio cannot reach the local bridge without it.
 
-**The Output shows a version mismatch between the plugin and the server.** The installed `.rbxmx` is stale. Rebuild it (`npx rbxtsc && rojo build --output Tripwire.rbxmx`), copy it into your Plugins folder, and restart Studio. The plugin prints its compiled version, so the prefix tells you what is actually installed.
+**The Output shows a version mismatch between the plugin and the server.** The installed `.rbxmx` is stale. Rebuild it (`npx rbxtsc && rojo build --output Tripwire.rbxmx`), copy it into your Plugins folder, and restart Studio. The plugin prints its compiled version, so the prefix tells you what is actually installed; the panel header shows the same version.
 
 **An Open Cloud tool returns a 401, 403, or scope error.** The key is missing the scope that tool needs, the universe or place id is wrong, or the place is not published. Add the scope on the Creator Dashboard, confirm the ids, and reconnect the MCP server. The error text is Roblox's own, so it names what is missing.
 

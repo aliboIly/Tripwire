@@ -204,7 +204,7 @@ impl Bridge {
                     .unwrap_or_else(|| "Tripwire bridge is not running.".into()));
             }
             let active_id = inner.resolve_active().ok_or_else(|| {
-                "No Studio connected. Open Studio, click the Tripwire button, and enable Allow HTTP Requests.".to_string()
+                "No Studio connected. Open Studio, press Connect in the Tripwire panel, and enable Allow HTTP Requests.".to_string()
             })?;
             {
                 let studio = inner
@@ -274,7 +274,7 @@ impl Bridge {
                 .clone()
                 .map(|e| format!("Not connected: {e}"))
                 .unwrap_or_else(|| {
-                    "No Studio connected. Open Studio, click the Tripwire button, and enable Allow HTTP Requests.".into()
+                    "No Studio connected. Open Studio, press Connect in the Tripwire panel, and enable Allow HTTP Requests.".into()
                 }),
             Some(active) => {
                 let others = inner
@@ -370,7 +370,7 @@ fn stale_message(studio: &Studio) -> String {
         .map(|t| format!("{}s ago", t.elapsed().as_secs()))
         .unwrap_or_else(|| "never".into());
     format!(
-        "active Studio '{}' last seen {ago}; click the Tripwire button and enable Allow HTTP Requests.",
+        "active Studio '{}' last seen {ago}; press Connect in the Tripwire panel and enable Allow HTTP Requests.",
         studio.place_name
     )
 }
