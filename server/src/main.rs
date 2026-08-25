@@ -10,10 +10,12 @@ mod cloud;
 mod env;
 mod harness;
 mod httpx;
+mod monetization;
 mod opencloud;
 mod playtest;
 mod publish;
 mod screenshot;
+mod secrets;
 mod security;
 
 use std::sync::Arc;
@@ -487,6 +489,9 @@ struct DsListArgs {
 #[serde(rename_all = "camelCase")]
 struct DsEntriesArgs {
     datastore: String,
+    /// Data store scope. Omit for the global scope; "-" lists entries across all scopes.
+    #[serde(default)]
+    scope: Option<String>,
     #[serde(default)]
     prefix: Option<String>,
     #[serde(default)]
@@ -498,12 +503,51 @@ struct DsEntriesArgs {
 #[derive(Deserialize, schemars::JsonSchema)]
 struct DsEntryArgs {
     datastore: String,
+    /// Data store scope; omit for the global scope.
+    #[serde(default)]
+    scope: Option<String>,
     entry: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct DsGetArgs {
+    datastore: String,
+    /// Data store scope; omit for the global scope.
+    #[serde(default)]
+    scope: Option<String>,
+    entry: String,
+    /// Read this revision (from list_datastore_entry_revisions) instead of the latest.
+    #[serde(default)]
+    revision: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct DsRevisionsArgs {
+    datastore: String,
+    #[serde(default)]
+    scope: Option<String>,
+    entry: String,
+    #[serde(default)]
+    max_page_size: Option<i64>,
+    #[serde(default)]
+    page_token: Option<String>,
+    /// CEL on revision_create_time only, e.g. `revision_create_time >= "2026-01-01T00:00:00Z"`.
+    #[serde(default)]
+    filter: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct DsNameArgs {
+    datastore: String,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
 struct DsSetArgs {
     datastore: String,
+    /// Data store scope; omit for the global scope.
+    #[serde(default)]
+    scope: Option<String>,
     entry: String,
     #[schemars(schema_with = "any_json_schema")]
     value: Value,
@@ -517,6 +561,9 @@ struct DsSetArgs {
 #[derive(Deserialize, schemars::JsonSchema)]
 struct DsIncrementArgs {
     datastore: String,
+    /// Data store scope; omit for the global scope.
+    #[serde(default)]
+    scope: Option<String>,
     entry: String,
     amount: i64,
     #[serde(default)]
@@ -683,6 +730,470 @@ struct SubscriptionArgs {
     user_id: String,
     #[serde(default)]
     full: Option<bool>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct FlushMemoryArgs {
+    /// LIVE (default) or TEST.
+    #[serde(default)]
+    scope: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct UpdateUniverseArgs {
+    #[serde(default)]
+    voice_chat_enabled: Option<bool>,
+    /// Robux price of private servers. Only settable when private servers are already enabled.
+    #[serde(default)]
+    private_server_price_robux: Option<i64>,
+    #[serde(default)]
+    desktop_enabled: Option<bool>,
+    #[serde(default)]
+    mobile_enabled: Option<bool>,
+    #[serde(default)]
+    tablet_enabled: Option<bool>,
+    #[serde(default)]
+    console_enabled: Option<bool>,
+    #[serde(default)]
+    vr_enabled: Option<bool>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct UpdatePlaceArgs {
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    /// Maximum players per server.
+    #[serde(default)]
+    server_size: Option<i64>,
+}
+
+#[derive(Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct RestartServersArgs {
+    /// Restrict to these place ids; omit for every active place in the universe.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    place_ids: Option<Vec<i64>>,
+    /// Restart servers on the newest version too, not only outdated ones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    close_all_versions: Option<bool>,
+    /// Stop matchmaking into old servers and keep them up for bleedOffDurationMinutes first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bleed_off_servers: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bleed_off_duration_minutes: Option<i64>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct TranslateArgs {
+    text: String,
+    /// IETF BCP-47 codes, for example ["es", "fr", "ja"].
+    target_language_codes: Vec<String>,
+    /// Omit to auto-detect.
+    #[serde(default)]
+    source_language_code: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct GameServersArgs {
+    /// The place version number the servers run.
+    version: String,
+    #[serde(default)]
+    max_page_size: Option<i64>,
+    #[serde(default)]
+    page_token: Option<String>,
+    /// A field, optionally with " desc", for example "uptime desc".
+    #[serde(default)]
+    order_by: Option<String>,
+    /// CEL over the server fields.
+    #[serde(default)]
+    filter: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct GameServerLogsArgs {
+    version: String,
+    job_id: String,
+    #[serde(default)]
+    max_page_size: Option<i64>,
+    #[serde(default)]
+    page_token: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct InstanceIdArgs {
+    /// An instance id from a previous listing, or "root" for the DataModel.
+    instance_id: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct InstanceChildrenArgs {
+    /// An instance id from a previous listing, or "root" for the DataModel.
+    instance_id: String,
+    #[serde(default)]
+    max_page_size: Option<i64>,
+    #[serde(default)]
+    page_token: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct UpdateInstanceArgs {
+    instance_id: String,
+    /// The partial engineInstance, e.g. {"Name": "X"} or {"Details": {"Script": {"Source": "print(1)", "Enabled": true}}}.
+    #[schemars(schema_with = "any_json_schema")]
+    engine_instance: Value,
+    /// Optional field mask, e.g. "engineInstance.Details.Script.Source".
+    #[serde(default)]
+    update_mask: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct RestrictionListArgs {
+    /// Restrict to a place's own bans; omit for universe-wide.
+    #[serde(default)]
+    place_id: Option<String>,
+    #[serde(default)]
+    max_page_size: Option<i64>,
+    #[serde(default)]
+    page_token: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct RestrictionGetArgs {
+    user_id: String,
+    #[serde(default)]
+    place_id: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct SetRestrictionArgs {
+    user_id: String,
+    /// true bans, false unbans.
+    active: bool,
+    /// Ban length in seconds; omit for permanent.
+    #[serde(default)]
+    duration_seconds: Option<i64>,
+    /// Internal note, never shown to the user (max 1000 chars).
+    #[serde(default)]
+    private_reason: Option<String>,
+    /// Shown to the user (max 400 chars).
+    #[serde(default)]
+    display_reason: Option<String>,
+    /// Do not extend the ban to suspected alt accounts.
+    #[serde(default)]
+    exclude_alt_accounts: Option<bool>,
+    /// Ban from one place only; omit for the whole universe.
+    #[serde(default)]
+    place_id: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct RestrictionLogsArgs {
+    #[serde(default)]
+    max_page_size: Option<i64>,
+    #[serde(default)]
+    page_token: Option<String>,
+    /// CEL on user or place, e.g. `user == 'users/123'`.
+    #[serde(default)]
+    filter: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct SecretsListArgs {
+    #[serde(default)]
+    limit: Option<i64>,
+    #[serde(default)]
+    cursor: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct SecretPutArgs {
+    /// The secret name scripts will ask HttpService:GetSecret for, e.g. "discord".
+    id: String,
+    /// The plaintext. It is sealed with the universe public key before it leaves this machine.
+    content: String,
+    /// Domain wildcard the secret may be sent to, e.g. "*.discord.com".
+    #[serde(default)]
+    domain: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct SecretIdArgs {
+    id: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct AssetGetArgs {
+    asset_id: String,
+    /// Fields to include, e.g. "description,displayName,previews".
+    #[serde(default)]
+    read_mask: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct AssetIdArgs {
+    asset_id: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct UpdateAssetArgs {
+    asset_id: String,
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    /// New content file. Roblox only supports content replacement for Models.
+    #[serde(default)]
+    file_path: Option<String>,
+    #[serde(default)]
+    content_type: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct AssetVersionsArgs {
+    asset_id: String,
+    #[serde(default)]
+    max_page_size: Option<i64>,
+    #[serde(default)]
+    page_token: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct RollbackAssetArgs {
+    asset_id: String,
+    /// A version number from list_asset_versions.
+    version_number: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct AssetQuotasArgs {
+    /// Defaults to ROBLOX_CREATOR_USER_ID.
+    #[serde(default)]
+    user_id: Option<String>,
+    /// CEL on quotaType and assetType, e.g. `quotaType == 'RATE_LIMIT_UPLOAD' && assetType == 'Audio'`.
+    #[serde(default)]
+    filter: Option<String>,
+    #[serde(default)]
+    max_page_size: Option<i64>,
+    #[serde(default)]
+    page_token: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct DownloadAssetArgs {
+    asset_id: String,
+    /// Local path to write the content to.
+    out_path: String,
+    #[serde(default)]
+    version_number: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct GrantAssetPermissionsArgs {
+    asset_ids: Vec<i64>,
+    /// User, Group, GroupRoleset, Universe, or All.
+    subject_type: String,
+    /// The user, group, roleset, or universe id; omit for All.
+    #[serde(default)]
+    subject_id: Option<String>,
+    /// Use, Edit, Download, CopyFromRcc, or UpdateFromRcc.
+    action: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct ProductListArgs {
+    #[serde(default)]
+    page_size: Option<i64>,
+    #[serde(default)]
+    page_token: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct ProductIdArgs {
+    product_id: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct ProductCreateArgs {
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    /// Robux price.
+    #[serde(default)]
+    price: Option<i64>,
+    #[serde(default)]
+    is_for_sale: Option<bool>,
+    #[serde(default)]
+    is_regional_pricing_enabled: Option<bool>,
+    #[serde(default)]
+    is_managed_pricing_enabled: Option<bool>,
+    /// Icon image (.png or .jpg) to upload.
+    #[serde(default)]
+    image_path: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct ProductUpdateArgs {
+    product_id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    price: Option<i64>,
+    #[serde(default)]
+    is_for_sale: Option<bool>,
+    #[serde(default)]
+    is_regional_pricing_enabled: Option<bool>,
+    #[serde(default)]
+    is_managed_pricing_enabled: Option<bool>,
+    /// Developer products only: list it on the external store page.
+    #[serde(default)]
+    store_page_enabled: Option<bool>,
+    #[serde(default)]
+    image_path: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct SearchCreatorStoreArgs {
+    /// Search terms.
+    #[serde(default)]
+    query: Option<String>,
+    /// Model, Plugin, Audio, Decal, MeshPart, Video, or FontFamily. Required unless categoryPath is set.
+    #[serde(default)]
+    asset_type: Option<String>,
+    #[serde(default)]
+    max_page_size: Option<i64>,
+    #[serde(default)]
+    page_token: Option<String>,
+    /// Only assets by this user.
+    #[serde(default)]
+    user_id: Option<i64>,
+    /// Only assets by this group.
+    #[serde(default)]
+    group_id: Option<i64>,
+    #[serde(default)]
+    verified_creators_only: Option<bool>,
+    /// A Creator Store category path, as an alternative to assetType.
+    #[serde(default)]
+    category_path: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct GroupListArgs {
+    group_id: String,
+    #[serde(default)]
+    max_page_size: Option<i64>,
+    #[serde(default)]
+    page_token: Option<String>,
+    /// CEL, e.g. `user == 'users/123'` or `role == 'groups/1/roles/2'`.
+    #[serde(default)]
+    filter: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct JoinRequestArgs {
+    group_id: String,
+    join_request_id: String,
+    /// true accepts, false declines.
+    accept: bool,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct GroupRoleArgs {
+    group_id: String,
+    /// The membership id from list_group_memberships.
+    membership_id: String,
+    /// The role id from list_group_roles.
+    role_id: String,
+    /// Remove the role instead of assigning it.
+    #[serde(default)]
+    unassign: Option<bool>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct AnalyticsArgs {
+    /// A metric name from the Analytics guide, e.g. "DAU", "Sessions", "AverageSessionLength".
+    metric: String,
+    /// OneMinute, HalfHour, OneHour, OneDay, OneWeek, OneMonth, or None.
+    granularity: String,
+    /// Inclusive ISO 8601 start.
+    start_time: String,
+    /// Exclusive ISO 8601 end.
+    end_time: String,
+    /// Dimensions to group by, e.g. ["Platform"].
+    #[serde(default)]
+    breakdown: Option<Vec<String>>,
+    /// Filters as in the Analytics guide, e.g. [{"dimension": "Platform", "operator": "In", "values": ["Desktop"]}].
+    #[serde(default)]
+    #[schemars(schema_with = "any_json_schema")]
+    filter: Option<Value>,
+    #[serde(default)]
+    limit: Option<i64>,
+    /// Set to ask for the possible values of these dimensions instead of metric data.
+    #[serde(default)]
+    dimensions: Option<Vec<String>>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct ThumbnailArgs {
+    user_id: String,
+    /// 48, 50, 60, 75, 100, 110, 150, 180, 352, 420, or 720. Default 420.
+    #[serde(default)]
+    size: Option<i64>,
+    /// PNG (default) or JPEG.
+    #[serde(default)]
+    format: Option<String>,
+    /// ROUND (default) or SQUARE.
+    #[serde(default)]
+    shape: Option<String>,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+struct OpenCloudRequestArgs {
+    /// GET, POST, PATCH, PUT, or DELETE.
+    method: String,
+    /// Host-relative path under apis.roblox.com, e.g. "/cloud/v2/universes/123/places/456".
+    path: String,
+    /// Query parameters as a flat object.
+    #[serde(default)]
+    #[schemars(schema_with = "any_json_schema")]
+    query: Option<Value>,
+    /// JSON request body.
+    #[serde(default)]
+    #[schemars(schema_with = "any_json_schema")]
+    body: Option<Value>,
 }
 
 #[derive(Clone)]
@@ -1359,6 +1870,7 @@ impl Tripwire {
             opencloud::list_datastore_entries(
                 &self.http,
                 &a.datastore,
+                a.scope.as_deref(),
                 a.prefix.as_deref(),
                 a.max_page_size,
                 a.page_token.as_deref(),
@@ -1368,14 +1880,21 @@ impl Tripwire {
     }
 
     #[tool(
-        description = "Read a data store entry's value and metadata (scope universe-datastores.objects:read)."
+        description = "Read a data store entry's value and metadata (scope universe-datastores.objects:read). Pass revision to read an older version (universe-datastores.versions:read)."
     )]
     async fn get_datastore_entry(
         &self,
-        Parameters(a): Parameters<DsEntryArgs>,
+        Parameters(a): Parameters<DsGetArgs>,
     ) -> Result<CallToolResult, McpError> {
         Ok(oc_text(
-            opencloud::get_datastore_entry(&self.http, &a.datastore, &a.entry).await,
+            opencloud::get_datastore_entry(
+                &self.http,
+                &a.datastore,
+                a.scope.as_deref(),
+                &a.entry,
+                a.revision.as_deref(),
+            )
+            .await,
         ))
     }
 
@@ -1390,6 +1909,7 @@ impl Tripwire {
             opencloud::set_datastore_entry(
                 &self.http,
                 &a.datastore,
+                a.scope.as_deref(),
                 &a.entry,
                 &a.value,
                 a.users,
@@ -1407,7 +1927,13 @@ impl Tripwire {
         Parameters(a): Parameters<DsEntryArgs>,
     ) -> Result<CallToolResult, McpError> {
         Ok(oc_text(
-            opencloud::delete_datastore_entry(&self.http, &a.datastore, &a.entry).await,
+            opencloud::delete_datastore_entry(
+                &self.http,
+                &a.datastore,
+                a.scope.as_deref(),
+                &a.entry,
+            )
+            .await,
         ))
     }
 
@@ -1422,6 +1948,7 @@ impl Tripwire {
             opencloud::increment_datastore_entry(
                 &self.http,
                 &a.datastore,
+                a.scope.as_deref(),
                 &a.entry,
                 a.amount,
                 a.users,
@@ -1705,6 +2232,968 @@ impl Tripwire {
             )
             .await,
         ))
+    }
+
+    // --- Open Cloud: data store history and lifecycle ---
+
+    #[tool(
+        description = "List an entry's revisions, newest first (scope universe-datastores.versions:list). Each revision id can be passed to get_datastore_entry."
+    )]
+    async fn list_datastore_entry_revisions(
+        &self,
+        Parameters(a): Parameters<DsRevisionsArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::list_datastore_entry_revisions(
+                &self.http,
+                &a.datastore,
+                a.scope.as_deref(),
+                &a.entry,
+                a.max_page_size,
+                a.page_token.as_deref(),
+                a.filter.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "Schedule a whole data store for deletion in 30 days (scope universe-datastores.control:delete). Reversible with undelete_datastore until then. Affects live player data."
+    )]
+    async fn delete_datastore(
+        &self,
+        Parameters(a): Parameters<DsNameArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::delete_datastore(&self.http, &a.datastore).await,
+        ))
+    }
+
+    #[tool(
+        description = "Cancel a pending data store deletion (scope universe-datastores.control:delete)."
+    )]
+    async fn undelete_datastore(
+        &self,
+        Parameters(a): Parameters<DsNameArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::undelete_datastore(&self.http, &a.datastore).await,
+        ))
+    }
+
+    #[tool(
+        description = "Take a snapshot of every data store so the next write to each key keeps a versioned backup (scope universe-datastores.control:snapshot). One per experience per UTC day; run it before a risky migration."
+    )]
+    async fn snapshot_datastores(&self) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(opencloud::snapshot_datastores(&self.http).await))
+    }
+
+    #[tool(
+        description = "Delete an ordered data store entry (scope universe.ordered-data-store.scope.entry:write)."
+    )]
+    async fn delete_ordered_entry(
+        &self,
+        Parameters(a): Parameters<OrderedEntryArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::delete_ordered_entry(&self.http, &a.store, a.scope.as_deref(), &a.entry)
+                .await,
+        ))
+    }
+
+    #[tool(
+        description = "Flush every Memory Store structure in the universe and wait for it (scope memory-store:flush). scope LIVE (default) wipes production state; TEST is the Studio test scope."
+    )]
+    async fn flush_memory_store(
+        &self,
+        Parameters(a): Parameters<FlushMemoryArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::flush_memory_store(&self.http, a.scope.as_deref()).await,
+        ))
+    }
+
+    // --- Open Cloud: universe and place management ---
+
+    #[tool(
+        description = "Update the configured universe's settings (scope universe:write): voice chat, private server price, and per-platform join toggles. Only the fields you pass change. Name and description are set through update_place on the root place."
+    )]
+    async fn update_universe(
+        &self,
+        Parameters(a): Parameters<UpdateUniverseArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut fields = serde_json::Map::new();
+        let bools = [
+            ("voiceChatEnabled", a.voice_chat_enabled),
+            ("desktopEnabled", a.desktop_enabled),
+            ("mobileEnabled", a.mobile_enabled),
+            ("tabletEnabled", a.tablet_enabled),
+            ("consoleEnabled", a.console_enabled),
+            ("vrEnabled", a.vr_enabled),
+        ];
+        for (name, value) in bools {
+            if let Some(v) = value {
+                fields.insert(name.into(), json!(v));
+            }
+        }
+        if let Some(p) = a.private_server_price_robux {
+            fields.insert("privateServerPriceRobux".into(), json!(p));
+        }
+        if fields.is_empty() {
+            return Ok(text("Error: pass at least one field to update."));
+        }
+        Ok(oc_text(
+            opencloud::update_universe(&self.http, fields).await,
+        ))
+    }
+
+    #[tool(
+        description = "Update the configured place's name, description, or server size (scope universe.place:write). Fails with 409 while the place is open in an active Team Create session."
+    )]
+    async fn update_place(
+        &self,
+        Parameters(a): Parameters<UpdatePlaceArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut fields = serde_json::Map::new();
+        if let Some(n) = a.display_name {
+            fields.insert("displayName".into(), json!(n));
+        }
+        if let Some(d) = a.description {
+            fields.insert("description".into(), json!(d));
+        }
+        if let Some(size) = a.server_size {
+            fields.insert("serverSize".into(), json!(size));
+        }
+        if fields.is_empty() {
+            return Ok(text("Error: pass at least one field to update."));
+        }
+        Ok(oc_text(opencloud::update_place(&self.http, fields).await))
+    }
+
+    #[tool(
+        description = "Restart the universe's live servers so players move to the newest published version (scope universe:write). By default only outdated servers restart. This kicks real players; use bleedOffServers to drain instead."
+    )]
+    async fn restart_servers(
+        &self,
+        Parameters(a): Parameters<RestartServersArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let body = serde_json::to_value(&a).unwrap_or_else(|_| json!({}));
+        Ok(oc_text(opencloud::restart_servers(&self.http, body).await))
+    }
+
+    #[tool(
+        description = "Translate text into one or more languages with Roblox's translation service (scope universe:write). Returns a map of language code to translation."
+    )]
+    async fn translate_text(
+        &self,
+        Parameters(a): Parameters<TranslateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::translate_text(
+                &self.http,
+                &a.text,
+                a.source_language_code.as_deref(),
+                &a.target_language_codes,
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "List the live game servers running a place version, with player counts, uptime, and job ids (scope universe:read). Beta API."
+    )]
+    async fn list_game_servers(
+        &self,
+        Parameters(a): Parameters<GameServersArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::list_game_servers(
+                &self.http,
+                &a.version,
+                a.max_page_size,
+                a.page_token.as_deref(),
+                a.order_by.as_deref(),
+                a.filter.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "Read a live game server's log lines by job id (scope universe:read). Beta API. The production counterpart of get_playtest_output."
+    )]
+    async fn get_game_server_logs(
+        &self,
+        Parameters(a): Parameters<GameServerLogsArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::get_game_server_logs(
+                &self.http,
+                &a.version,
+                &a.job_id,
+                a.max_page_size,
+                a.page_token.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    // --- Open Cloud: Engine Instance API (the published place, no Studio needed) ---
+
+    #[tool(
+        description = "Read an instance in the published place via the Engine Instance API (scope universe.place.instance:read). Distinct from get_instance_properties, which reads the open Studio session. Beta: only Folder and script classes expose details."
+    )]
+    async fn cloud_get_instance(
+        &self,
+        Parameters(a): Parameters<InstanceIdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::get_instance(&self.http, &a.instance_id).await,
+        ))
+    }
+
+    #[tool(
+        description = "List an instance's children in the published place (scope universe.place.instance:read). Start from instanceId \"root\". Returns each child's id, name, and class."
+    )]
+    async fn cloud_list_instance_children(
+        &self,
+        Parameters(a): Parameters<InstanceChildrenArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::list_instance_children(
+                &self.http,
+                &a.instance_id,
+                a.max_page_size,
+                a.page_token.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "Update an instance in the published place (scope universe.place.instance:write): rename it, or set a Script/LocalScript/ModuleScript's Source, Enabled, or RunContext. Writes to the published place, not the Studio session or the Rojo tree."
+    )]
+    async fn cloud_update_instance(
+        &self,
+        Parameters(a): Parameters<UpdateInstanceArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::update_instance(
+                &self.http,
+                &a.instance_id,
+                a.engine_instance,
+                a.update_mask.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    // --- Open Cloud: user restrictions (bans) ---
+
+    #[tool(
+        description = "List users who have ever been banned from the universe, or from one place (scope universe.user-restriction:read)."
+    )]
+    async fn list_user_restrictions(
+        &self,
+        Parameters(a): Parameters<RestrictionListArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::list_user_restrictions(
+                &self.http,
+                a.place_id.as_deref(),
+                a.max_page_size,
+                a.page_token.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "Read one user's ban state and reasons (scope universe.user-restriction:read)."
+    )]
+    async fn get_user_restriction(
+        &self,
+        Parameters(a): Parameters<RestrictionGetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::get_user_restriction(&self.http, a.place_id.as_deref(), &a.user_id).await,
+        ))
+    }
+
+    #[tool(
+        description = "Ban or unban a user from the universe or one place (scope universe.user-restriction:write). active=true with an optional duration in seconds bans (omit duration for permanent); active=false lifts it. Kicks the user from live servers."
+    )]
+    async fn set_user_restriction(
+        &self,
+        Parameters(a): Parameters<SetRestrictionArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut restriction = serde_json::Map::new();
+        restriction.insert("active".into(), json!(a.active));
+        if let Some(d) = a.duration_seconds {
+            restriction.insert("duration".into(), json!(format!("{d}s")));
+        }
+        if let Some(r) = a.private_reason {
+            restriction.insert("privateReason".into(), json!(r));
+        }
+        if let Some(r) = a.display_reason {
+            restriction.insert("displayReason".into(), json!(r));
+        }
+        if let Some(x) = a.exclude_alt_accounts {
+            restriction.insert("excludeAltAccounts".into(), json!(x));
+        }
+        Ok(oc_text(
+            opencloud::set_user_restriction(
+                &self.http,
+                a.place_id.as_deref(),
+                &a.user_id,
+                restriction,
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "List the audit log of ban and unban changes across the universe (scope universe.user-restriction:read)."
+    )]
+    async fn list_user_restriction_logs(
+        &self,
+        Parameters(a): Parameters<RestrictionLogsArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::list_user_restriction_logs(
+                &self.http,
+                a.max_page_size,
+                a.page_token.as_deref(),
+                a.filter.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    // --- Open Cloud: secrets store ---
+
+    #[tool(
+        description = "List the universe's secrets, metadata only (scope universe.secret:read). Secret values are never returned."
+    )]
+    async fn list_secrets(
+        &self,
+        Parameters(a): Parameters<SecretsListArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            secrets::list_secrets(&self.http, a.limit, a.cursor.as_deref()).await,
+        ))
+    }
+
+    #[tool(
+        description = "Create a secret for HttpService:GetSecret (scope universe.secret:write). The content is encrypted locally with the universe's public key (libsodium sealed box) before upload. Max 500 per universe."
+    )]
+    async fn create_secret(
+        &self,
+        Parameters(a): Parameters<SecretPutArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            secrets::put_secret(&self.http, &a.id, &a.content, a.domain.as_deref(), false).await,
+        ))
+    }
+
+    #[tool(
+        description = "Replace an existing secret's content or domain (scope universe.secret:write). Encrypted locally before upload."
+    )]
+    async fn update_secret(
+        &self,
+        Parameters(a): Parameters<SecretPutArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            secrets::put_secret(&self.http, &a.id, &a.content, a.domain.as_deref(), true).await,
+        ))
+    }
+
+    #[tool(
+        description = "Permanently delete a secret (scope universe.secret:write). Irreversible."
+    )]
+    async fn delete_secret(
+        &self,
+        Parameters(a): Parameters<SecretIdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(secrets::delete_secret(&self.http, &a.id).await))
+    }
+
+    // --- Open Cloud: asset management ---
+
+    #[tool(
+        description = "Read an asset's metadata: type, name, description, moderation state, current revision (scope asset:read)."
+    )]
+    async fn get_asset(
+        &self,
+        Parameters(a): Parameters<AssetGetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            assets::get_asset(&self.http, &a.asset_id, a.read_mask.as_deref()).await,
+        ))
+    }
+
+    #[tool(
+        description = "Update an asset's display name or description, or (Models only) upload new content as a new version (scope asset:write)."
+    )]
+    async fn update_asset(
+        &self,
+        Parameters(a): Parameters<UpdateAssetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            assets::update_asset(
+                &self.http,
+                &a.asset_id,
+                a.display_name.as_deref(),
+                a.description.as_deref(),
+                a.file_path.as_deref(),
+                a.content_type.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "List an asset's versions with their moderation state (scope asset:read)."
+    )]
+    async fn list_asset_versions(
+        &self,
+        Parameters(a): Parameters<AssetVersionsArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            assets::list_asset_versions(
+                &self.http,
+                &a.asset_id,
+                a.max_page_size,
+                a.page_token.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "Roll an asset back to an earlier version number (scope asset:write). Creates a new version whose content is the old one."
+    )]
+    async fn rollback_asset_version(
+        &self,
+        Parameters(a): Parameters<RollbackAssetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            assets::rollback_asset_version(&self.http, &a.asset_id, &a.version_number).await,
+        ))
+    }
+
+    #[tool(
+        description = "Archive an asset so it disappears from the site and stops loading in experiences (scope asset:write). restore_asset reverses it."
+    )]
+    async fn archive_asset(
+        &self,
+        Parameters(a): Parameters<AssetIdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            assets::set_asset_archived(&self.http, &a.asset_id, true).await,
+        ))
+    }
+
+    #[tool(description = "Restore an archived asset (scope asset:write).")]
+    async fn restore_asset(
+        &self,
+        Parameters(a): Parameters<AssetIdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            assets::set_asset_archived(&self.http, &a.asset_id, false).await,
+        ))
+    }
+
+    #[tool(
+        description = "List a user's asset upload quotas and how much of each is used (scope asset:read). Defaults to ROBLOX_CREATOR_USER_ID."
+    )]
+    async fn list_asset_quotas(
+        &self,
+        Parameters(a): Parameters<AssetQuotasArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let user = match a.user_id.or_else(|| env::var("ROBLOX_CREATOR_USER_ID")) {
+            Some(u) => u,
+            None => return Ok(text("Error: pass userId or set ROBLOX_CREATOR_USER_ID.")),
+        };
+        Ok(oc_text(
+            assets::list_asset_quotas(
+                &self.http,
+                &user,
+                a.filter.as_deref(),
+                a.max_page_size,
+                a.page_token.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "Download an asset's content (a model .rbxm, an image, a place file) to a local path via the asset delivery API (scope legacy-asset:manage). The key must be allowed to read the asset."
+    )]
+    async fn download_asset(
+        &self,
+        Parameters(a): Parameters<DownloadAssetArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            assets::download_asset(
+                &self.http,
+                &a.asset_id,
+                &a.out_path,
+                a.version_number.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "Grant a user, group, roleset, universe, or everyone a permission (Use, Edit, Download, CopyFromRcc, UpdateFromRcc) on a batch of assets you own (scope asset-permissions:write). Use=Universe is how an experience gets to load your private audio or mesh."
+    )]
+    async fn grant_asset_permissions(
+        &self,
+        Parameters(a): Parameters<GrantAssetPermissionsArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            assets::grant_asset_permissions(
+                &self.http,
+                &a.asset_ids,
+                &a.subject_type,
+                a.subject_id.as_deref(),
+                &a.action,
+            )
+            .await,
+        ))
+    }
+
+    // --- Open Cloud: monetization ---
+
+    #[tool(
+        description = "List the universe's developer products with prices and sale state (scope developer-product:read)."
+    )]
+    async fn list_developer_products(
+        &self,
+        Parameters(a): Parameters<ProductListArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            monetization::list_products(
+                &self.http,
+                monetization::Product::DeveloperProduct,
+                a.page_size,
+                a.page_token.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "Read one developer product's configuration (scope developer-product:read)."
+    )]
+    async fn get_developer_product(
+        &self,
+        Parameters(a): Parameters<ProductIdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            monetization::get_product(
+                &self.http,
+                monetization::Product::DeveloperProduct,
+                &a.product_id,
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "Create a developer product (scope developer-product:write): name, description, Robux price, sale state, optional icon image. Returns the productId scripts pass to MarketplaceService."
+    )]
+    async fn create_developer_product(
+        &self,
+        Parameters(a): Parameters<ProductCreateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            monetization::save_product(
+                &self.http,
+                monetization::Product::DeveloperProduct,
+                None,
+                product_fields(
+                    Some(a.name),
+                    a.description,
+                    a.price,
+                    a.is_for_sale,
+                    a.is_regional_pricing_enabled,
+                    a.is_managed_pricing_enabled,
+                    None,
+                    a.image_path,
+                ),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "Update a developer product's fields; only the ones you pass change (scope developer-product:write)."
+    )]
+    async fn update_developer_product(
+        &self,
+        Parameters(a): Parameters<ProductUpdateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            monetization::save_product(
+                &self.http,
+                monetization::Product::DeveloperProduct,
+                Some(&a.product_id),
+                product_fields(
+                    a.name,
+                    a.description,
+                    a.price,
+                    a.is_for_sale,
+                    a.is_regional_pricing_enabled,
+                    a.is_managed_pricing_enabled,
+                    a.store_page_enabled,
+                    a.image_path,
+                ),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "List the universe's game passes with prices and sale state (scope game-pass:read)."
+    )]
+    async fn list_game_passes(
+        &self,
+        Parameters(a): Parameters<ProductListArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            monetization::list_products(
+                &self.http,
+                monetization::Product::GamePass,
+                a.page_size,
+                a.page_token.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(description = "Read one game pass's configuration (scope game-pass:read).")]
+    async fn get_game_pass(
+        &self,
+        Parameters(a): Parameters<ProductIdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            monetization::get_product(&self.http, monetization::Product::GamePass, &a.product_id)
+                .await,
+        ))
+    }
+
+    #[tool(
+        description = "Create a game pass (scope game-pass:write): name, description, Robux price, sale state, optional icon image. Returns the gamePassId."
+    )]
+    async fn create_game_pass(
+        &self,
+        Parameters(a): Parameters<ProductCreateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            monetization::save_product(
+                &self.http,
+                monetization::Product::GamePass,
+                None,
+                product_fields(
+                    Some(a.name),
+                    a.description,
+                    a.price,
+                    a.is_for_sale,
+                    a.is_regional_pricing_enabled,
+                    a.is_managed_pricing_enabled,
+                    None,
+                    a.image_path,
+                ),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "Update a game pass's fields; only the ones you pass change (scope game-pass:write)."
+    )]
+    async fn update_game_pass(
+        &self,
+        Parameters(a): Parameters<ProductUpdateArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            monetization::save_product(
+                &self.http,
+                monetization::Product::GamePass,
+                Some(&a.product_id),
+                product_fields(
+                    a.name,
+                    a.description,
+                    a.price,
+                    a.is_for_sale,
+                    a.is_regional_pricing_enabled,
+                    a.is_managed_pricing_enabled,
+                    None,
+                    a.image_path,
+                ),
+            )
+            .await,
+        ))
+    }
+
+    // --- Open Cloud: Creator Store ---
+
+    #[tool(
+        description = "Search the Creator Store for models, plugins, audio, decals, meshes, video, or fonts (scope creator-store-product:read). Returns asset ids you can pass to insert_model or download_asset."
+    )]
+    async fn search_creator_store(
+        &self,
+        Parameters(a): Parameters<SearchCreatorStoreArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut q: Vec<(&str, String)> = Vec::new();
+        if let Some(v) = a.query {
+            q.push(("query", v));
+        }
+        if let Some(v) = a.asset_type {
+            q.push(("searchCategoryType", v));
+        }
+        if let Some(v) = a.category_path {
+            q.push(("categoryPath", v));
+        }
+        if let Some(v) = a.max_page_size {
+            q.push(("maxPageSize", v.to_string()));
+        }
+        if let Some(v) = a.page_token {
+            q.push(("pageToken", v));
+        }
+        if let Some(v) = a.user_id {
+            q.push(("userId", v.to_string()));
+        }
+        if let Some(v) = a.group_id {
+            q.push(("groupId", v.to_string()));
+        }
+        if let Some(v) = a.verified_creators_only {
+            q.push(("includeOnlyVerifiedCreators", v.to_string()));
+        }
+        Ok(oc_text(
+            monetization::search_creator_store(&self.http, q).await,
+        ))
+    }
+
+    #[tool(
+        description = "Read a Creator Store asset's listing: creator, votes, price, and asset details (scope creator-store-product:read)."
+    )]
+    async fn get_creator_store_asset(
+        &self,
+        Parameters(a): Parameters<AssetIdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            monetization::get_creator_store_asset(&self.http, &a.asset_id).await,
+        ))
+    }
+
+    #[tool(
+        description = "Read one of your Creator Store products: base and purchase price, published state, restrictions (scope creator-store-product:read). Create or update a product with open_cloud_request on /cloud/v2/creator-store-products."
+    )]
+    async fn get_creator_store_product(
+        &self,
+        Parameters(a): Parameters<ProductIdArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            monetization::get_creator_store_product(&self.http, &a.product_id).await,
+        ))
+    }
+
+    // --- Open Cloud: groups ---
+
+    #[tool(
+        description = "List a group's members with their roles; filter by user or role (public data, no scope needed beyond the key)."
+    )]
+    async fn list_group_memberships(
+        &self,
+        Parameters(a): Parameters<GroupListArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::list_group_collection(
+                &self.http,
+                &a.group_id,
+                "memberships",
+                a.max_page_size,
+                a.page_token.as_deref(),
+                a.filter.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "List a group's roles with rank and, where the key allows, permissions (scope group:read)."
+    )]
+    async fn list_group_roles(
+        &self,
+        Parameters(a): Parameters<GroupListArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::list_group_collection(
+                &self.http,
+                &a.group_id,
+                "roles",
+                a.max_page_size,
+                a.page_token.as_deref(),
+                a.filter.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "List pending requests to join a group (scope group:read). Filter by user with `user == 'users/123'`."
+    )]
+    async fn list_group_join_requests(
+        &self,
+        Parameters(a): Parameters<GroupListArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::list_group_collection(
+                &self.http,
+                &a.group_id,
+                "join-requests",
+                a.max_page_size,
+                a.page_token.as_deref(),
+                a.filter.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    #[tool(description = "Accept or decline a group join request (scope group:write).")]
+    async fn resolve_group_join_request(
+        &self,
+        Parameters(a): Parameters<JoinRequestArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::resolve_group_join_request(
+                &self.http,
+                &a.group_id,
+                &a.join_request_id,
+                a.accept,
+            )
+            .await,
+        ))
+    }
+
+    #[tool(
+        description = "Assign a role to a group member, or remove one with unassign=true (scope group:write). The key's owner must outrank the role."
+    )]
+    async fn set_group_role(
+        &self,
+        Parameters(a): Parameters<GroupRoleArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::set_group_role(
+                &self.http,
+                &a.group_id,
+                &a.membership_id,
+                &a.role_id,
+                !a.unassign.unwrap_or(false),
+            )
+            .await,
+        ))
+    }
+
+    // --- Open Cloud: analytics and users ---
+
+    #[tool(
+        description = "Query the universe's analytics: a metric over a time range at a granularity, optionally broken down and filtered by dimension (scope universe.analytics:read). Pass dimensions to list a dimension's possible values instead. Waits for the query to finish."
+    )]
+    async fn query_analytics(
+        &self,
+        Parameters(a): Parameters<AnalyticsArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut body = serde_json::Map::new();
+        body.insert("metric".into(), json!(a.metric));
+        body.insert("granularity".into(), json!(a.granularity));
+        body.insert("startTime".into(), json!(a.start_time));
+        body.insert("endTime".into(), json!(a.end_time));
+        if let Some(f) = a.filter {
+            body.insert("filter".into(), f);
+        }
+        if let Some(l) = a.limit {
+            body.insert("limit".into(), json!(l));
+        }
+        let kind = match a.dimensions {
+            Some(dims) => {
+                body.insert("dimensions".into(), json!(dims));
+                "dimension-values"
+            }
+            None => {
+                if let Some(b) = a.breakdown {
+                    body.insert("breakdown".into(), json!(b));
+                }
+                "metrics"
+            }
+        };
+        Ok(oc_text(
+            opencloud::query_analytics(&self.http, kind, Value::Object(body)).await,
+        ))
+    }
+
+    #[tool(
+        description = "Render a user's avatar headshot and return its image URL (no extra scope). Size, PNG or JPEG, round or square."
+    )]
+    async fn generate_user_thumbnail(
+        &self,
+        Parameters(a): Parameters<ThumbnailArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        Ok(oc_text(
+            opencloud::generate_user_thumbnail(
+                &self.http,
+                &a.user_id,
+                a.size,
+                a.format.as_deref(),
+                a.shape.as_deref(),
+            )
+            .await,
+        ))
+    }
+
+    // --- Open Cloud: everything else ---
+
+    #[tool(
+        description = "Call any Open Cloud endpoint under apis.roblox.com with the configured key: method, host-relative path, query, JSON body. Covers the permissions without a typed tool (legacy badges, localization, team create, game events, thumbnails, ads, place version history, creator store products, and new APIs). Consult https://create.roblox.com/docs/cloud/reference for the path and scope; Roblox's own error comes back when the key lacks it."
+    )]
+    async fn open_cloud_request(
+        &self,
+        Parameters(a): Parameters<OpenCloudRequestArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let query = match a.query {
+            Some(Value::Object(m)) => Some(m),
+            Some(Value::Null) | None => None,
+            Some(_) => return Ok(text("Error: query must be a flat JSON object.")),
+        };
+        Ok(oc_text(
+            opencloud::open_cloud_request(&self.http, &a.method, &a.path, query, a.body).await,
+        ))
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn product_fields(
+    name: Option<String>,
+    description: Option<String>,
+    price: Option<i64>,
+    is_for_sale: Option<bool>,
+    is_regional_pricing_enabled: Option<bool>,
+    is_managed_pricing_enabled: Option<bool>,
+    store_page_enabled: Option<bool>,
+    image_path: Option<String>,
+) -> monetization::ProductFields {
+    monetization::ProductFields {
+        name,
+        description,
+        price,
+        is_for_sale,
+        is_regional_pricing_enabled,
+        is_managed_pricing_enabled,
+        store_page_enabled,
+        image_path,
     }
 }
 

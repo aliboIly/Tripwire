@@ -36,7 +36,9 @@ pub fn encode_capture(data: &Value) -> Result<String, String> {
 
     // JPEG has no alpha channel, so drop it.
     let rgb: Vec<u8> = rgba
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .flat_map(|p| [p[0], p[1], p[2]])
         .collect();
 

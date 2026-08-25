@@ -171,9 +171,10 @@ below for the full walkthrough.
 ## Open Cloud setup
 
 Most of Tripwire needs no credentials. These tools do, because they call Roblox Open Cloud:
-`run_luau`, the headless tests (`run_tests`, `run_test_file`, `list_tests`), `upload_asset`,
-`publish_place`, and the DataStore, Ordered DataStore, MessagingService, Memory Store, platform,
-and engagement tools. They authenticate with a Roblox Open Cloud API key.
+`run_luau`, the headless tests (`run_tests`, `run_test_file`, `list_tests`), and every tool in the
+Open Cloud sections below (assets, publishing, data stores, messaging, memory, universe and
+servers, the Engine Instance API, moderation, secrets, monetization, Creator Store, groups,
+analytics, platform, and `open_cloud_request`). They authenticate with a Roblox Open Cloud API key.
 
 > **Use at your own risk.** An Open Cloud key is a real credential with real power over your
 > experience. Depending on the scopes you grant it, it can read and overwrite your live DataStores,
@@ -186,13 +187,16 @@ and engagement tools. They authenticate with a Roblox Open Cloud API key.
 
 1. Go to [create.roblox.com/dashboard/credentials](https://create.roblox.com/dashboard/credentials) and sign in.
 2. Click **Create API Key** and name it (for example `Tripwire`).
-3. Under **Access Permissions**, add only the API systems for the tools you want, and grant each the operation it needs, scoped to your experience:
+3. Under **Access Permissions**, add only the API systems for the tools you want, and grant each the operation it needs, scoped to your experience. Every system the dashboard offers has a tool; the map is in [Permissions to tools](#permissions-to-tools) below. The short version:
    - **Luau Execution** (write): `run_luau` and the headless tests.
    - **universe-places** (write): `publish_place`.
-   - **Assets** (read + write): `upload_asset`.
+   - **Assets** (read + write) and **Asset Permissions**: the asset tools.
    - **DataStores** and **Ordered DataStores**: the data-store tools.
    - **Messaging Service** (publish) and **Memory Stores**: those tools.
-   - **User/Group/Inventory/Subscription/Notification**: the platform and engagement tools.
+   - **Universe**, **Place**, **Instance**, **User Restrictions**, **Secrets**, **Analytics**: the universe, server, instance, moderation, secrets, and analytics tools.
+   - **Developer Products**, **Game Passes**, **Creator Store**: the monetization and store tools.
+   - **User/Group/Inventory/Subscription/Notification**: the platform, group, and engagement tools.
+   - Anything else (the legacy and experimental systems): `open_cloud_request`.
 4. Under **Security**, set **Accepted IP Addresses** to your machine's IP, or `0.0.0.0/0` to allow any (simplest for local use). Set an expiration if you want.
 5. Click **Save & Generate Key** and copy the key string. It is shown only once.
 
@@ -285,19 +289,31 @@ returns Roblox's own error if a scope is missing, so you can add scopes as you g
 
 ### Assets and publishing (Open Cloud)
 <details><summary><code>upload_asset</code></summary>Upload a local file as a Roblox asset (Decal, Audio, Model, Animation, or Video); returns the assetId.</details>
+<details><summary><code>get_asset</code></summary>An asset's metadata: type, name, description, moderation state, current revision.</details>
+<details><summary><code>update_asset</code></summary>Change an asset's name or description, or (Models) upload new content as a new version.</details>
+<details><summary><code>list_asset_versions</code></summary>An asset's versions with their moderation state.</details>
+<details><summary><code>rollback_asset_version</code></summary>Roll an asset back to an earlier version.</details>
+<details><summary><code>archive_asset</code> / <code>restore_asset</code></summary>Hide an asset from the site and experiences, or bring it back.</details>
+<details><summary><code>list_asset_quotas</code></summary>Your upload quotas and how much of each is used.</details>
+<details><summary><code>download_asset</code></summary>Download an asset's content (a model, image, or place file) to a local path.</details>
+<details><summary><code>grant_asset_permissions</code></summary>Grant a user, group, roleset, universe, or everyone a permission (Use, Edit, Download) on assets you own.</details>
 <details><summary><code>publish_place</code></summary>Publish a local place file (.rbxl/.rbxlx) as a new version of the experience.</details>
 
 ### DataStores (Open Cloud)
 <details><summary><code>list_datastores</code></summary>List the standard data stores in the universe.</details>
-<details><summary><code>list_datastore_entries</code></summary>List entry keys in a data store.</details>
-<details><summary><code>get_datastore_entry</code></summary>Read an entry's value and metadata.</details>
+<details><summary><code>list_datastore_entries</code></summary>List entry keys in a data store. Optional <code>scope</code>; <code>-</code> lists every scope.</details>
+<details><summary><code>get_datastore_entry</code></summary>Read an entry's value and metadata, or an older <code>revision</code> of it.</details>
 <details><summary><code>set_datastore_entry</code></summary>Create or overwrite an entry (value plus optional users/attributes).</details>
 <details><summary><code>delete_datastore_entry</code></summary>Soft-delete an entry (purged after 30 days).</details>
 <details><summary><code>increment_datastore_entry</code></summary>Atomically add an integer to a numeric entry.</details>
+<details><summary><code>list_datastore_entry_revisions</code></summary>An entry's revision history, newest first.</details>
+<details><summary><code>delete_datastore</code> / <code>undelete_datastore</code></summary>Schedule a whole data store for deletion in 30 days, or cancel that.</details>
+<details><summary><code>snapshot_datastores</code></summary>Snapshot every data store so the next write to each key keeps a versioned backup. Run it before a migration.</details>
 <details><summary><code>list_ordered_entries</code></summary>List ordered data store entries by value, ascending or descending.</details>
 <details><summary><code>get_ordered_entry</code></summary>Read one ordered data store entry.</details>
 <details><summary><code>set_ordered_entry</code></summary>Set (upsert) an ordered data store entry to a non-negative integer.</details>
 <details><summary><code>increment_ordered_entry</code></summary>Atomically add to an ordered data store entry.</details>
+<details><summary><code>delete_ordered_entry</code></summary>Delete an ordered data store entry.</details>
 
 ### Messaging and memory (Open Cloud)
 <details><summary><code>publish_message</code></summary>Publish a message to a MessagingService topic (reaches running production servers).</details>
@@ -308,15 +324,90 @@ returns Roblox's own error if a scope is missing, so you can add scopes as you g
 <details><summary><code>memory_queue_add</code></summary>Add an item to a Memory Store queue, with priority and TTL.</details>
 <details><summary><code>memory_queue_read</code></summary>Read items from a queue; returns a readId for the discard call.</details>
 <details><summary><code>memory_queue_discard</code></summary>Permanently remove a read batch by its readId.</details>
+<details><summary><code>flush_memory_store</code></summary>Wipe every Memory Store structure in the universe (LIVE or TEST scope) and wait for it.</details>
 
-### Platform and engagement (Open Cloud)
+### Universe, place, and servers (Open Cloud)
 <details><summary><code>get_universe</code></summary>The configured universe's metadata.</details>
+<details><summary><code>update_universe</code></summary>Voice chat, private server price, and per-platform join toggles.</details>
 <details><summary><code>get_place</code></summary>The configured place's metadata.</details>
-<details><summary><code>get_user</code></summary>A user's public profile.</details>
+<details><summary><code>update_place</code></summary>The place's name, description, or server size.</details>
+<details><summary><code>restart_servers</code></summary>Move live servers to the newest published version, outdated ones only by default, with an optional bleed-off.</details>
+<details><summary><code>list_game_servers</code></summary>The live servers running a place version: players, uptime, job ids.</details>
+<details><summary><code>get_game_server_logs</code></summary>A live server's log lines by job id. The production counterpart of <code>get_playtest_output</code>.</details>
+<details><summary><code>translate_text</code></summary>Translate text into one or more languages with Roblox's translation service.</details>
+
+### Engine Instance API (Open Cloud, no Studio needed)
+<details><summary><code>cloud_list_instance_children</code></summary>List an instance's children in the published place. Start from <code>root</code>.</details>
+<details><summary><code>cloud_get_instance</code></summary>Read an instance's details in the published place.</details>
+<details><summary><code>cloud_update_instance</code></summary>Rename an instance or set a script's Source, Enabled, or RunContext in the published place.</details>
+
+### Moderation (Open Cloud)
+<details><summary><code>list_user_restrictions</code></summary>Users who have ever been banned from the universe or a place.</details>
+<details><summary><code>get_user_restriction</code></summary>One user's ban state and reasons.</details>
+<details><summary><code>set_user_restriction</code></summary>Ban (permanent or timed, with reasons, optionally not extended to alts) or unban a user. Kicks them from live servers.</details>
+<details><summary><code>list_user_restriction_logs</code></summary>The audit log of ban and unban changes.</details>
+
+### Secrets (Open Cloud)
+<details><summary><code>list_secrets</code></summary>The universe's secrets, metadata only.</details>
+<details><summary><code>create_secret</code> / <code>update_secret</code></summary>Store a value for <code>HttpService:GetSecret</code>. It is sealed with the universe's public key on your machine before upload.</details>
+<details><summary><code>delete_secret</code></summary>Permanently delete a secret.</details>
+
+### Monetization and Creator Store (Open Cloud)
+<details><summary><code>list_developer_products</code> / <code>get_developer_product</code></summary>Developer products with prices and sale state.</details>
+<details><summary><code>create_developer_product</code> / <code>update_developer_product</code></summary>Create or edit a developer product: name, description, Robux price, sale state, icon.</details>
+<details><summary><code>list_game_passes</code> / <code>get_game_pass</code></summary>Game passes with prices and sale state.</details>
+<details><summary><code>create_game_pass</code> / <code>update_game_pass</code></summary>Create or edit a game pass.</details>
+<details><summary><code>search_creator_store</code></summary>Search the Creator Store for models, plugins, audio, decals, meshes, video, or fonts; returns asset ids for <code>insert_model</code>.</details>
+<details><summary><code>get_creator_store_asset</code></summary>A store listing's creator, votes, price, and asset details.</details>
+<details><summary><code>get_creator_store_product</code></summary>One of your own store products: prices, published state, restrictions.</details>
+
+### Groups (Open Cloud)
 <details><summary><code>get_group</code></summary>A group's metadata.</details>
+<details><summary><code>list_group_memberships</code></summary>A group's members and their roles, filterable by user or role.</details>
+<details><summary><code>list_group_roles</code></summary>A group's roles and ranks.</details>
+<details><summary><code>list_group_join_requests</code> / <code>resolve_group_join_request</code></summary>Pending join requests, and accept or decline one.</details>
+<details><summary><code>set_group_role</code></summary>Assign a role to a member, or remove one.</details>
+
+### Platform, engagement, and analytics (Open Cloud)
+<details><summary><code>get_user</code></summary>A user's public profile.</details>
+<details><summary><code>generate_user_thumbnail</code></summary>A user's avatar headshot as an image URL.</details>
 <details><summary><code>list_inventory</code></summary>A user's inventory items, filterable by type or id.</details>
 <details><summary><code>send_notification</code></summary>Send an experience notification to a user (from a Creator Dashboard template).</details>
 <details><summary><code>get_subscription</code></summary>Read a user's subscription to a subscription product.</details>
+<details><summary><code>query_analytics</code></summary>A metric (DAU, sessions, revenue, and so on) over a time range, broken down and filtered by dimension; or the values a dimension can take.</details>
+
+### Everything else (Open Cloud)
+<details><summary><code>open_cloud_request</code></summary>Call any endpoint under <code>apis.roblox.com</code> with the key attached: method, host-relative path, query, JSON body. This is how the legacy and experimental systems are reached (badges, localization tables, Team Create, game events, thumbnails, ads, place version history, creator store products). The key is only ever sent to that host.</details>
+
+### Permissions to tools
+
+Every API system you can add to a key on the Creator Dashboard, and the tools that use it. Scope
+names are the ones the dashboard and Roblox's error messages use.
+
+| Permission (scope) | Tools |
+| --- | --- |
+| Luau Execution (`universe.place.luau-execution-session`) | `run_luau`, `run_tests`, `run_test_file`, `list_tests` |
+| Places (`universe-places:write`, `universe.place`) | `publish_place`, `update_place`, `get_place` |
+| Universe (`universe:read`, `universe:write`) | `update_universe`, `restart_servers`, `translate_text`, `list_game_servers`, `get_game_server_logs` |
+| Instance (`universe.place.instance`) | `cloud_list_instance_children`, `cloud_get_instance`, `cloud_update_instance` |
+| Data Stores (`universe-datastores.control`, `.objects`, `.versions`) | the DataStores section: entries, revisions, store delete, snapshot |
+| Ordered Data Stores (`universe.ordered-data-store.scope.entry`) | `list/get/set/increment/delete_ordered_entry` |
+| Memory Stores (`memory-store.sorted-map`, `.queue`, `:flush`) | the sorted-map and queue tools, `flush_memory_store` |
+| Messaging Service (`universe-messaging-service:publish`) | `publish_message` |
+| User Restrictions (`universe.user-restriction`) | `list/get/set_user_restriction`, `list_user_restriction_logs` |
+| Secrets (`universe.secret`) | `list/create/update/delete_secret` |
+| Assets (`asset:read`, `asset:write`) | `upload_asset`, `get_asset`, `update_asset`, `list_asset_versions`, `rollback_asset_version`, `archive_asset`, `restore_asset`, `list_asset_quotas` |
+| Asset Permissions (`asset-permissions:write`) | `grant_asset_permissions` |
+| Legacy Assets (`legacy-asset:manage`) | `download_asset` |
+| Developer Products (`developer-product`) | `list/get/create/update_developer_product` |
+| Game Passes (`game-pass`) | `list/get/create/update_game_pass` |
+| Creator Store (`creator-store-product`) | `search_creator_store`, `get_creator_store_asset`, `get_creator_store_product`; create and update via `open_cloud_request` |
+| Groups (`group:read`, `group:write`) | `get_group`, `list_group_memberships`, `list_group_roles`, `list_group_join_requests`, `resolve_group_join_request`, `set_group_role` |
+| Users and Inventory (`user.advanced:read`, `user.social:read`, `user.inventory-item:read`) | `get_user`, `generate_user_thumbnail`, `list_inventory` |
+| Notifications (`user.user-notification:write`) | `send_notification` |
+| Subscriptions (`universe.subscription-product.subscription:read`) | `get_subscription` |
+| Analytics (`universe.analytics:read`) | `query_analytics` |
+| Everything else: Ads, Game Events, Thumbnails, Creator Store saves, Legacy Badges, Legacy Develop, Legacy Followings, Legacy Game Internationalization, Legacy Groups, Legacy Localization Tables, Legacy Publish, Legacy Team Collaboration, Legacy Users | `open_cloud_request` |
 
 ---
 
@@ -345,6 +436,7 @@ These are platform limits, not bugs. They are written down here so you know goin
 - In-play actions go through an injected runner. Input, runtime state, and stop during a playtest are relayed over the bridge, not called directly on the plugin.
 - Headless tests run a server context. Open Cloud runs your published place on a server, where `RunService:IsStudio()` is false and plugin APIs are absent. Use it for server and gameplay logic and the security tests, not for Studio-plugin or client-input behaviour.
 - Tool parity with Roblox's built-in Assistant is maintained by hand.
+- Several Open Cloud systems are beta or experimental on Roblox's side (the Instance API, user restrictions, secrets, game servers, analytics, and everything behind `open_cloud_request`). Their shapes can move, and `open_cloud_request` gives you the raw response, not a tidied one.
 
 Tripwire is maintained by one person in spare time. Issues and pull requests usually get a reply within about a week. A slow reply is not a no.
 
@@ -358,7 +450,9 @@ Tripwire is maintained by one person in spare time. Issues and pull requests usu
 
 **The Output shows a version mismatch between the plugin and the server.** The installed `.rbxmx` is stale. Rebuild it (`npx rbxtsc && rojo build --output Tripwire.rbxmx`), copy it into your Plugins folder, and restart Studio. The plugin prints its compiled version, so the prefix tells you what is actually installed; the panel header shows the same version.
 
-**An Open Cloud tool returns a 401, 403, or scope error.** The key is missing the scope that tool needs, the universe or place id is wrong, or the place is not published. Add the scope on the Creator Dashboard, confirm the ids, and reconnect the MCP server. The error text is Roblox's own, so it names what is missing.
+**An Open Cloud tool returns `401 Invalid API Key`.** The key itself is not accepted: it was regenerated, expired, or pasted incompletely. Every tool fails the same way. Create or copy the key again on the Creator Dashboard, replace `ROBLOX_OPEN_CLOUD_KEY`, and reconnect the MCP server.
+
+**An Open Cloud tool returns a 403 or scope error.** The key is missing the scope that tool needs, the universe or place id is wrong, or the place is not published. Add the scope on the Creator Dashboard (the tool description names it), confirm the ids, and reconnect the MCP server. The error text is Roblox's own, so it names what is missing.
 
 **`run_tests` does not see your latest change.** It reads the published place. Publish first; `rojo serve` only updates the live edit session, not what Open Cloud runs.
 

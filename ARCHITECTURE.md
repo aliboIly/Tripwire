@@ -30,7 +30,10 @@ server/src/
   main.rs        registers and dispatches the MCP tools, plus the review CLI
   bridge.rs      the local HTTP bridge the plugin and runner poll
   cloud.rs       Open Cloud Luau Execution client
-  opencloud.rs   Open Cloud REST tools (data stores, messaging, memory, platform)
+  opencloud.rs   Open Cloud REST tools (data stores, memory, universe/place, instances, bans, groups, analytics, generic request)
+  assets.rs      Open Cloud assets: upload, metadata, versions, download, permissions
+  secrets.rs     Open Cloud secrets store (sealed-box encryption)
+  monetization.rs developer products, game passes, Creator Store
   harness.rs     headless test harness over the cloud client
   playtest.rs    playtest lifecycle: inject the runner, start, stop, input
   security.rs    static security analysis of a Rojo source tree (swc)

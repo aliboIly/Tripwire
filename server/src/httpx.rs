@@ -3,13 +3,19 @@
 // hand-rolled retry the Node server used. The API key travels only in the per-request
 // x-api-key header.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use reqwest::multipart::{Form, Part};
 use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
 use serde_json::Value;
 
+/// Every Open Cloud API lives under this host. The generic request tool is pinned to
+/// it so the key can never be sent anywhere else.
+pub const API_HOST: &str = "https://apis.roblox.com";
+
 const ATTEMPTS: u32 = 3;
 const BASE_DELAY: Duration = Duration::from_secs(1);
+const OPERATION_POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 pub fn client() -> Client {
     Client::builder()
@@ -77,4 +83,61 @@ pub async fn request_json(
         return Ok(Value::Null);
     }
     serde_json::from_str(&text).map_err(|e| format!("invalid JSON in response: {e}"))
+}
+
+/// Polls a long-running Operation (`{ path, done, error, response }`) at an absolute
+/// URL until `done`, then returns the whole operation. A populated `error` becomes an
+/// `Err` so callers surface Roblox's message.
+pub async fn poll_operation(
+    http: &Client,
+    key: &str,
+    url: &str,
+    deadline: Duration,
+) -> Result<Value, String> {
+    let stop = Instant::now() + deadline;
+    loop {
+        let op = request_json(http, key, Method::GET, url, &[], None).await?;
+        if is_done(&op) {
+            return finished_operation(op);
+        }
+        if Instant::now() > stop {
+            return Err(format!(
+                "operation did not finish within {}s",
+                deadline.as_secs()
+            ));
+        }
+        tokio::time::sleep(OPERATION_POLL_INTERVAL).await;
+    }
+}
+
+pub fn is_done(op: &Value) -> bool {
+    op.get("done").and_then(Value::as_bool).unwrap_or(false)
+}
+
+/// A finished operation is an error when its `error` field is populated.
+pub fn finished_operation(op: Value) -> Result<Value, String> {
+    match op.get("error") {
+        Some(err) if !err.is_null() => Err(format!("operation failed: {err}")),
+        _ => Ok(op),
+    }
+}
+
+/// Text fields for a multipart form, skipping absent optionals. Bools and numbers are
+/// sent as their plain string form, which is what the form-based APIs expect.
+pub fn form_fields(fields: &[(&str, Option<String>)]) -> Form {
+    let mut form = Form::new();
+    for (name, value) in fields {
+        if let Some(v) = value {
+            form = form.text(name.to_string(), v.clone());
+        }
+    }
+    form
+}
+
+/// A file part read into memory, with a mime type, for a multipart upload.
+pub fn file_part(bytes: Vec<u8>, file_name: &str, mime: &str) -> Part {
+    Part::bytes(bytes)
+        .file_name(file_name.to_string())
+        .mime_str(mime)
+        .expect("caller passes a valid mime type")
 }
